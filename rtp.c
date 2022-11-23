@@ -1070,39 +1070,35 @@ void janus_rtp_simulcasting_prepare(json_t *simulcast, int *rid_ext_id, uint32_t
 }
 
 gboolean janus_rtp_simulcasting_context_process_rtp(janus_rtp_simulcasting_context *context,
-		char *buf, int len, uint32_t *ssrcs, char **rids,
+		char *buf, int len, uint8_t ssrcs_amount, uint32_t *ssrcs, char **rids,
 		janus_videocodec vcodec, janus_rtp_switching_context *sc) {
 	if(!context || !buf || len < 1)
 		return FALSE;
 	janus_rtp_header *header = (janus_rtp_header *)buf;
 	uint32_t ssrc = ntohl(header->ssrc);
 	int substream = -1;
-	if(ssrc == *(ssrcs)) {
-		substream = 0;
-	} else if(ssrc == *(ssrcs+1)) {
-		substream = 1;
-	} else if(ssrc == *(ssrcs+2)) {
-		substream = 2;
-	} else {
+	for(uint8_t i=0; i<ssrcs_amount; i++) {
+		if (ssrc == ssrcs[i]) {
+			substream = i;
+			break;
+		}
+	}
+	if(-1 == substream) {
 		/* We don't recognize this SSRC, check if rid can help us */
 		if(context->rid_ext_id < 1 || rids == NULL)
 			return FALSE;
 		char sdes_item[16];
 		if(janus_rtp_header_extension_parse_rid(buf, len, context->rid_ext_id, sdes_item, sizeof(sdes_item)) != 0)
 			return FALSE;
-		if(rids[0] != NULL && !strcmp(rids[0], sdes_item)) {
-			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
-			*(ssrcs) = ssrc;
-			substream = 0;
-		} else if(rids[1] != NULL && !strcmp(rids[1], sdes_item)) {
-			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
-			*(ssrcs+1) = ssrc;
-			substream = 1;
-		} else if(rids[2] != NULL && !strcmp(rids[2], sdes_item)) {
-			JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
-			*(ssrcs+2) = ssrc;
-			substream = 2;
-		} else {
+		for(uint8_t i=0; i<ssrcs_amount; i++) {
+			if(rids[i] != NULL && !strcmp(rids[i], sdes_item)) {
+				JANUS_LOG(LOG_VERB, "Simulcasting: rid=%s --> ssrc=%"SCNu32"\n", sdes_item, ssrc);
+				ssrcs[i] = ssrc;
+				substream = 0;
+				break;
+			}
+		}
+		if (-1 == substream) {
 			JANUS_LOG(LOG_WARN, "Simulcasting: unknown rid '%s'...\n", sdes_item);
 			return FALSE;
 		}
