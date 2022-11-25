@@ -297,6 +297,8 @@ function updateStreamsList() {
 	}});
 }
 
+let videoSlNumber = 0;
+
 function getStreamInfo() {
 	$('#metadata').empty();
 	$('#info').addClass('hide').hide();
@@ -308,6 +310,9 @@ function getStreamInfo() {
 		if(result && result.info && result.info.metadata) {
 			$('#metadata').html(escapeXmlTags(result.info.metadata));
 			$('#info').removeClass('hide').show();
+		}
+		if(result && result.info && result.info.video_sl_number > 0) {
+			videoSlNumber = result.info.video_sl_number;
 		}
 	}});
 }
@@ -366,14 +371,22 @@ function escapeXmlTags(value) {
 
 // Helpers to create Simulcast-related UI, if enabled
 function addSimulcastButtons() {
-	$('#curres').parent().append(
+	let buttonsHtml =
 		'<div id="simulcast" class="btn-group-vertical btn-group-vertical-xs pull-right">' +
 		'	<div class"row">' +
-		'		<div class="btn-group btn-group-xs" style="width: 100%">' +
-		'			<button id="sl-2" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to higher quality" style="width: 33%">SL 2</button>' +
-		'			<button id="sl-1" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to normal quality" style="width: 33%">SL 1</button>' +
-		'			<button id="sl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to lower quality" style="width: 34%">SL 0</button>' +
-		'		</div>' +
+		'		<div class="btn-group btn-group-xs" style="width: 100%">';
+	if (videoSlNumber > 0) {
+		let buttonWidthPercent = Math.floor(100.0/videoSlNumber);
+		for(let idx=videoSlNumber-1; idx>=0; idx--) {
+			if (0 == idx) {
+				buttonWidthPercent = 100 - (buttonWidthPercent * (videoSlNumber - 1));
+			}
+			buttonsHtml = buttonsHtml +
+			'			<button id="sl-' + idx + '" type="button" class="btn btn-primary" data-toggle="tooltip" title="Switch to quality ' + idx + ' (higher is better)" style="width: ' + buttonWidthPercent + '%">SL ' + idx + '</button>';
+		}
+	}
+
+	buttonsHtml = buttonsHtml +
 		'	</div>' +
 		'	<div class"row">' +
 		'		<div class="btn-group btn-group-xs hide" style="width: 100%">' +
@@ -382,38 +395,27 @@ function addSimulcastButtons() {
 		'			<button id="tl-0" type="button" class="btn btn-primary" data-toggle="tooltip" title="Cap to temporal layer 0" style="width: 33%">TL 0</button>' +
 		'		</div>' +
 		'	</div>' +
-		'</div>');
+		'</div>';
+	$('#curres').parent().append(buttonsHtml);
 	// Enable the simulcast selection buttons
-	$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
-		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (lower quality)", null, {timeOut: 2000});
-			if(!$('#sl-2').hasClass('btn-success'))
-				$('#sl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
-			if(!$('#sl-1').hasClass('btn-success'))
-				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
-			$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			streaming.send({ message: { request: "configure", substream: 0 }});
+	if (videoSlNumber > 0) {
+		let buttonWidthPercent = Math.floor(100.0/videoSlNumber);
+		for(let idx=0; idx<videoSlNumber; idx++) {
+			$('#sl-' + idx).removeClass('btn-primary btn-success').addClass('btn-primary')
+				.unbind('click').click(function() {
+					toastr.info('Switching simulcast substream, wait for it... (' + idx + ' quality)', null, {timeOut: 2000});
+					for(let subIdx=0; subIdx<videoSlNumber; subIdx++) {
+						if(subIdx == idx) {
+							$('#sl-' + subIdx).removeClass('btn-primary btn-info btn-success').addClass('btn-info');
+						} else {
+							if(!$('#sl-' + subIdx).hasClass('btn-success'))
+								$('#sl-' + subIdx).removeClass('btn-primary btn-info').addClass('btn-primary');
+						}
+					}
+					streaming.send({ message: { request: "configure", substream: idx }});
 		});
-	$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary')
-		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (normal quality)", null, {timeOut: 2000});
-			if(!$('#sl-2').hasClass('btn-success'))
-				$('#sl-2').removeClass('btn-primary btn-info').addClass('btn-primary');
-			$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			if(!$('#sl-0').hasClass('btn-success'))
-				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({ message: { request: "configure", substream: 1 }});
-		});
-	$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary')
-		.unbind('click').click(function() {
-			toastr.info("Switching simulcast substream, wait for it... (higher quality)", null, {timeOut: 2000});
-			$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-info');
-			if(!$('#sl-1').hasClass('btn-success'))
-				$('#sl-1').removeClass('btn-primary btn-info').addClass('btn-primary');
-			if(!$('#sl-0').hasClass('btn-success'))
-				$('#sl-0').removeClass('btn-primary btn-info').addClass('btn-primary');
-			streaming.send({ message: { request: "configure", substream: 2 }});
-		});
+		}
+	}
 	$('#tl-0').parent().removeClass('hide');
 	$('#tl-0').removeClass('btn-primary btn-success').addClass('btn-primary')
 		.unbind('click').click(function() {
@@ -449,21 +451,15 @@ function addSimulcastButtons() {
 
 function updateSimulcastButtons(substream, temporal) {
 	// Check the substream
-	if(substream === 0) {
-		toastr.success("Switched simulcast substream! (lower quality)", null, {timeOut: 2000});
-		$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
-		$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
-		$('#sl-0').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
-	} else if(substream === 1) {
-		toastr.success("Switched simulcast substream! (normal quality)", null, {timeOut: 2000});
-		$('#sl-2').removeClass('btn-primary btn-success').addClass('btn-primary');
-		$('#sl-1').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
-		$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
-	} else if(substream === 2) {
-		toastr.success("Switched simulcast substream! (higher quality)", null, {timeOut: 2000});
-		$('#sl-2').removeClass('btn-primary btn-info btn-success').addClass('btn-success');
-		$('#sl-1').removeClass('btn-primary btn-success').addClass('btn-primary');
-		$('#sl-0').removeClass('btn-primary btn-success').addClass('btn-primary');
+	if (videoSlNumber > 0) {
+		for(let idx=0; idx<videoSlNumber; idx++) {
+			if(substream === idx) {
+				toastr.success('Switched simulcast substream! (' + idx + ' quality)', null, {timeOut: 2000});
+				$('#sl-' + idx).removeClass('btn-primary btn-info btn-success').addClass('btn-success');
+			} else {
+				$('#sl-' + idx).removeClass('btn-primary btn-success').addClass('btn-primary');
+			}
+		}
 	}
 	// Check the temporal layer
 	if(temporal === 0) {
