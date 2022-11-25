@@ -274,6 +274,7 @@ rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call ga
 		"videopt" : <video payload type, only present if configured and the mountpoint contains video>,
 		"videortpmap" : "<video SDP rtpmap value, only present if configured and the mountpoint contains video>",
 		"videofmtp" : "<video SDP fmtp value, only present if configured and the mountpoint contains video>",
+		"video_sl_number" : "<how many spatial layers is being broadcasted>",
 		...
 	}
 }
@@ -2672,6 +2673,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			if(source->simulcast) {
 				json_object_set_new(ml, "videosimulcast", json_true());
 			}
+			json_object_set_new(ml, "video_sl_number", json_integer(source->video_ports_length));
 			if(source->svc) {
 				json_object_set_new(ml, "videosvc", json_true());
 			}
