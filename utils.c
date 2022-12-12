@@ -843,7 +843,277 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 	return FALSE;
 }
 
+gboolean skip_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits) {
+	if(num_bits > 31 || bit_limit - *bit_offset < num_bits) {
+		return FALSE;
+	}
+	*bit_offset += num_bits;
+	return TRUE;
+}
+
+gboolean skip_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) {
+	return skip_bits(buffer, bit_offset, bit_limit, 1);
+}
+
+int read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits) {
+	unsigned int return_value = 0;
+
+	if(num_bits > 31 || bit_limit - *bit_offset < num_bits) {
+		return -1;
+	}
+
+	uint32_t bit_count = 0;
+
+	while(bit_count < num_bits) {
+		return_value <<= 1;
+		uint32_t coil = (uint32_t)buffer[(*bit_offset)/8];
+		coil >>= (7-((*bit_offset)%8));
+		coil &= 0x00000001u;
+		if(0 != coil) {
+			return_value |= 0x00000001u;
+		}
+		bit_count++;
+		*bit_offset += 1;
+	}
+
+	return (int)return_value;
+}
+
+gboolean read_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) {
+	if(1 == read_bits(buffer, bit_offset, bit_limit, 1)) {
+		return TRUE;
+	} else {
+		return FALSE;
+	}
+}
+
+int read_exp_golomb_code_num(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) {
+	int leading_zeros = 0;
+	while (!read_bit(buffer, bit_offset, bit_limit)) {
+		leading_zeros++;
+	}
+	return (1 << leading_zeros) - 1 + (leading_zeros > 0 ? read_bits(buffer, bit_offset, bit_limit, leading_zeros) : 0);
+}
+
+int read_unsigned_exp_golomb_coded_int(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) {
+	return read_exp_golomb_code_num(buffer, bit_offset, bit_limit);
+}
+
+int read_signed_exp_golomb_coded_int(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) {
+	int code_num = read_exp_golomb_code_num(buffer, bit_offset, bit_limit);
+	return ((code_num % 2) == 0 ? -1 : 1) * ((code_num + 1) / 2);
+}
+
+#define EXTENDED_SAR 0xFF
+
+static const float ASPECT_RATIO_IDC_VALUES[] = {
+        1.0f /* Unspecified. Assume square */,
+        1.0f,
+        12.0f / 11.0f,
+        10.0f / 11.0f,
+        16.0f / 11.0f,
+        40.0f / 33.0f,
+        24.0f / 11.0f,
+        20.0f / 11.0f,
+        32.0f / 11.0f,
+        80.0f / 33.0f,
+        18.0f / 11.0f,
+        15.0f / 11.0f,
+        64.0f / 33.0f,
+        160.0f / 99.0f,
+        4.0f / 3.0f,
+        3.0f / 2.0f,
+        2.0f
+      };
+
+static const int ASPECT_RATIO_IDC_VALUES_LENGTH = sizeof(ASPECT_RATIO_IDC_VALUES)/sizeof(float);
+
+const char * janus_h264_profile_str(int profile_idc) {
+	switch (profile_idc)
+	{
+		case  44 : return "CAVLC 4:4:4 Intra";
+		case  66 : return "Baseline";
+		case  77 : return "Main";
+		case  83 : return "Scalable Baseline";
+		case  86 : return "Scalable High";
+		case  88 : return "Extended";
+		case 100 : return "High";
+		case 110 : return "High 10";
+		case 118 : return "Multiview High";
+		case 122 : return "High 4:2:2";
+		case 128 : return "Stereo High";
+		case 138 : return "Multiview Depth High";
+		case 144 : return "High 4:4:4";
+		case 244 : return "High 4:4:4 Predictive";
+		default  : return "Unknown";
+	}
+}
+
+const char * janus_h264_level_str(int level_idc) {
+	switch (level_idc)
+	{
+		case 10 : return "1";
+		case 11 : return "1.1";
+		case 12 : return "1.2";
+		case 13 : return "1.3";
+		case 20 : return "2";
+		case 21 : return "2.1";
+		case 22 : return "2.2";
+		case 30 : return "3";
+		case 31 : return "3.1";
+		case 32 : return "3.2";
+		case 40 : return "4";
+		case 41 : return "4.1";
+		case 42 : return "4.2";
+		case 50 : return "5";
+		case 51 : return "51";
+		case 52 : return "52";
+		case 60 : return "6";
+		case 61 : return "6.1";
+		case 62 : return "6.2";
+		default : return "Unknown";
+	}
+}
+
+const char * janus_h264_chroma_subsampling_str(int chroma_format_idc) {
+	switch (chroma_format_idc)
+	{
+		case 1: return "4:2:0";
+		case 2: return "4:2:2";
+		case 3: return "4:4:4";
+		default: return "Unknown";
+	}
+}
+
+int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_mediainfo *mediainfo) {
+	if(NULL == buffer || 0 >= len || NULL == mediainfo ) {
+		return -1;
+	}
+	uint32_t bit_offset = 0;
+	uint32_t bit_limit = len*8;
+	skip_bits(buffer, &bit_offset, bit_limit, 8);//Skip NAL start (7)
+	int profile_idc = read_bits(buffer, &bit_offset, bit_limit, 8);
+	int constraints_flags_and_reserved_zero_2bits = read_bits(buffer, &bit_offset, bit_limit, 8);
+	int level_idc = read_bits(buffer, &bit_offset, bit_limit, 8);
+	int seq_parameter_set_id = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+
+	int chroma_format_idc = 1; // Default is 4:2:0
+	gboolean separate_color_plane_flag = FALSE;
+	if(profile_idc == 100
+			|| profile_idc == 110
+			|| profile_idc == 122
+			|| profile_idc == 244
+			|| profile_idc == 44
+			|| profile_idc == 83
+			|| profile_idc == 86
+			|| profile_idc == 118
+			|| profile_idc == 128
+			|| profile_idc == 138) {
+		chroma_format_idc = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+		if(chroma_format_idc == 3) {
+			separate_color_plane_flag = read_bit(buffer, &bit_offset, bit_limit);
+		}
+		read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // bit_depth_luma_minus8
+		read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // bit_depth_chroma_minus8
+		skip_bit(buffer, &bit_offset, bit_limit); // qpprime_y_zero_transform_bypass_flag
+		gboolean seq_scaling_matrix_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if(seq_scaling_matrix_present_flag) {
+			int limit = (chroma_format_idc != 3) ? 8 : 12;
+			for(int i = 0; i < limit; i++) {
+				gboolean seq_scaling_list_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+				if(seq_scaling_list_present_flag) {
+					//skipScalingList(data, i < 6 ? 16 : 64);
+				}
+			}
+		}
+	}
+
+	int frame_num_length = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit) + 4; // log2_max_frame_num_minus4 + 4
+	int pic_order_cnt_type = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+	int pic_order_cnt_lsb_length = 0;
+	gboolean delta_pic_order_always_zero_flag = FALSE;
+	if(pic_order_cnt_type == 0) {
+		// log2_max_pic_order_cnt_lsb_minus4 + 4
+		pic_order_cnt_lsb_length = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit) + 4;
+	} else if(pic_order_cnt_type == 1) {
+		delta_pic_order_always_zero_flag = read_bit(buffer, &bit_offset, bit_limit); // delta_pic_order_always_zero_flag
+		read_signed_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // offset_for_non_ref_pic
+		read_signed_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // offset_for_top_to_bottom_field
+		long num_ref_frames_in_pic_order_cnt_cycle = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+		for(int i = 0; i < num_ref_frames_in_pic_order_cnt_cycle; i++) {
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // offset_for_ref_frame[i]
+		}
+	}
+	int max_num_ref_frames = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // max_num_ref_frames
+	skip_bit(buffer, &bit_offset, bit_limit); // gaps_in_frame_num_value_allowed_flag
+
+	int pic_width_in_mbs = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit) + 1;
+	int pic_height_in_map_units = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit) + 1;
+	gboolean frame_mbs_only_flag = read_bit(buffer, &bit_offset, bit_limit);
+	int frame_height_in_mbs = (2 - (frame_mbs_only_flag ? 1 : 0)) * pic_height_in_map_units;
+	if(!frame_mbs_only_flag) {
+		skip_bit(buffer, &bit_offset, bit_limit); // mb_adaptive_frame_field_flag
+	}
+
+	skip_bit(buffer, &bit_offset, bit_limit); // direct_8x8_inference_flag
+	int frame_width = pic_width_in_mbs * 16;
+	int frame_height = frame_height_in_mbs * 16;
+	gboolean frame_cropping_flag = read_bit(buffer, &bit_offset, bit_limit);
+	if (frame_cropping_flag) {
+		int frame_crop_left_offset = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+		int frame_crop_right_offset = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+		int frame_crop_top_offset = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+		int frame_crop_bottom_offset = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+		int crop_unit_x;
+		int crop_unit_y;
+		if (chroma_format_idc == 0) {
+			crop_unit_x = 1;
+			crop_unit_y = 2 - (frame_mbs_only_flag ? 1 : 0);
+		} else {
+			int sub_width_c = (chroma_format_idc == 3) ? 1 : 2;
+			int sub_height_c = (chroma_format_idc == 1) ? 2 : 1;
+			crop_unit_x = sub_width_c;
+			crop_unit_y = sub_height_c * (2 - (frame_mbs_only_flag ? 1 : 0));
+		}
+		frame_width -= (frame_crop_left_offset + frame_crop_right_offset) * crop_unit_x;
+		frame_height -= (frame_crop_top_offset + frame_crop_bottom_offset) * crop_unit_y;
+	}
+
+	float pixel_width_height_ratio = 1.0f;
+	gboolean vui_parameters_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+	if (vui_parameters_present_flag) {
+		gboolean aspect_ratio_info_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if (aspect_ratio_info_present_flag) {
+			int aspect_ratio_idc = read_bits(buffer, &bit_offset, bit_limit, 8);
+			if (aspect_ratio_idc == EXTENDED_SAR) {
+				int sar_width = read_bits(buffer, &bit_offset, bit_limit, 16);
+				int sar_height = read_bits(buffer, &bit_offset, bit_limit, 16);
+				if (sar_width != 0 && sar_height != 0) {
+					pixel_width_height_ratio = (float) sar_width / sar_height;
+				}
+			} else if (aspect_ratio_idc < ASPECT_RATIO_IDC_VALUES_LENGTH) {
+				pixel_width_height_ratio = ASPECT_RATIO_IDC_VALUES[aspect_ratio_idc];
+			} else {
+				JANUS_LOG(LOG_WARN, "Unexpected aspect_ratio_idc value: 0x%X!", aspect_ratio_idc);
+			}
+		}
+	}
+	mediainfo->codec = "h264";
+	mediainfo->width  = frame_width;
+	mediainfo->height = frame_height;
+	mediainfo->pixel_aspect_ratio = pixel_width_height_ratio;
+	mediainfo->ref_frames = max_num_ref_frames;
+	mediainfo->profile = janus_h264_profile_str(profile_idc);
+	mediainfo->level = janus_h264_level_str(level_idc);
+	mediainfo->chroma_subsampling = janus_h264_chroma_subsampling_str(chroma_format_idc);
+	return 0;
+}
+
 gboolean janus_h264_is_keyframe(const char *buffer, int len) {
+	return janus_h264_is_keyframe_n_mi(buffer, len, NULL);
+}
+
+gboolean janus_h264_is_keyframe_n_mi(const char *buffer, int len, janus_video_mediainfo *mediainfo) {
 	if(!buffer || len < 6)
 		return FALSE;
 	/* Parse H264 header now */
@@ -866,6 +1136,11 @@ gboolean janus_h264_is_keyframe(const char *buffer, int len) {
 			int nal = *buffer & 0x1F;
 			if(nal == 7) {
 				JANUS_LOG(LOG_HUGE, "Got an SPS/PPS\n");
+				if (NULL != mediainfo) {
+					if(0 != janus_h264_get_mediainfo(buffer, psize, mediainfo)) {
+						memset(mediainfo, 0, sizeof(janus_video_mediainfo));
+					}
+				}
 				return TRUE;
 			}
 			buffer += psize;
