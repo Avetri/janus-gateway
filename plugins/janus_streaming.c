@@ -2504,6 +2504,8 @@ json_t * json_streaming_mediainfo_object(janus_video_mediainfo *mi, int idx) {
 	json_object_set_new(obj, "codec", json_string(mi->codec));
 	json_object_set_new(obj, "width", json_integer(mi->width));
 	json_object_set_new(obj, "height", json_integer(mi->height));
+	json_object_set_new(obj, "bitrate", json_integer(mi->bitrate));
+	json_object_set_new(obj, "cbr", json_boolean(mi->cbr));
 	json_object_set_new(obj, "ref_frames", json_integer(mi->ref_frames));
 	json_object_set_new(obj, "profile", json_string(mi->profile));
 	json_object_set_new(obj, "level", json_string(mi->level));
@@ -8229,6 +8231,7 @@ static void *janus_streaming_relay_thread(void *data) {
 						continue;
 					}
 					janus_video_mediainfo mi;
+					memset(&mi, 0, sizeof(janus_video_mediainfo));
 					int plen = 0;
 					char *payload = janus_rtp_payload(buffer, bytes, &plen);
 					if(payload && JANUS_VIDEOCODEC_H264 == mountpoint->codecs.video_codec) {
@@ -8236,8 +8239,8 @@ static void *janus_streaming_relay_thread(void *data) {
 							mi.port = source->video_ports[index];
 							if(memcmp(&mi, mountpoint->video_mediainfo+index, sizeof(janus_video_mediainfo))) {
 								memcpy(mountpoint->video_mediainfo+index, &mi, sizeof(janus_video_mediainfo));
-								JANUS_LOG(LOG_INFO, "[%s] ssrc=%"SCNu32", index %d, width %d, height %d\n",
-								name, ssrc, index, mi.width, mi.height);
+								JANUS_LOG(LOG_INFO, "[%s] ssrc=%"SCNu32", index %d, width %d, height %d, bitrate %ld.\n",
+								name, ssrc, index, mi.width, mi.height, mi.bitrate);
 							}
 						}
 					}

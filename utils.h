@@ -36,6 +36,8 @@ typedef struct janus_video_mediainfo {
 	const char * codec;
 	int width;
 	int height;
+	uint64_t bitrate;
+	gboolean cbr;
 	float pixel_aspect_ratio;
 	int ref_frames;
 	const char * profile;
@@ -487,11 +489,12 @@ size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compr
 
 gboolean skip_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits);
 gboolean skip_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
-int read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits);
+uint32_t read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits);
 gboolean read_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
 int read_exp_golomb_code_num(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
 int read_unsigned_exp_golomb_coded_int(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
 int read_signed_exp_golomb_coded_int(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
+void skip_scaling_list(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, int size);
 
 const char * janus_h264_profile_str(int profile_idc);
 const char * janus_h264_level_str(int level_idc);
