@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <math.h>
 
 #include <zlib.h>
 #include <openssl/rand.h>
@@ -854,10 +855,10 @@ gboolean skip_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) 
 	return skip_bits(buffer, bit_offset, bit_limit, 1);
 }
 
-int read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits) {
-	unsigned int return_value = 0;
+uint32_t read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits) {
+	uint32_t return_value = 0;
 
-	if(num_bits > 31 || bit_limit - *bit_offset < num_bits) {
+	if(num_bits > 32 || bit_limit - *bit_offset < num_bits) {
 		return -1;
 	}
 
@@ -875,7 +876,7 @@ int read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint
 		*bit_offset += 1;
 	}
 
-	return (int)return_value;
+	return return_value;
 }
 
 gboolean read_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) {
@@ -901,6 +902,18 @@ int read_unsigned_exp_golomb_coded_int(const char *buffer, uint32_t *bit_offset,
 int read_signed_exp_golomb_coded_int(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) {
 	int code_num = read_exp_golomb_code_num(buffer, bit_offset, bit_limit);
 	return ((code_num % 2) == 0 ? -1 : 1) * ((code_num + 1) / 2);
+}
+
+void skip_scaling_list(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, int size) {
+	int last_scale = 8;
+	int next_scale = 8;
+	for (int i = 0; i < size; i++) {
+		if (next_scale != 0) {
+			int delta_scale = read_signed_exp_golomb_coded_int(buffer, bit_offset, bit_limit);
+			next_scale = (last_scale + delta_scale + 256) % 256;
+		}
+		last_scale = (next_scale == 0) ? last_scale : next_scale;
+	}
 }
 
 #define EXTENDED_SAR 0xFF
@@ -1007,7 +1020,10 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 			|| profile_idc == 86
 			|| profile_idc == 118
 			|| profile_idc == 128
-			|| profile_idc == 138) {
+			|| profile_idc == 138
+			|| profile_idc == 139
+			|| profile_idc == 134
+			|| profile_idc == 135) {
 		chroma_format_idc = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
 		if(chroma_format_idc == 3) {
 			separate_color_plane_flag = read_bit(buffer, &bit_offset, bit_limit);
@@ -1021,7 +1037,7 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 			for(int i = 0; i < limit; i++) {
 				gboolean seq_scaling_list_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 				if(seq_scaling_list_present_flag) {
-					//skipScalingList(data, i < 6 ? 16 : 64);
+					skip_scaling_list(buffer, &bit_offset, bit_limit, i < 6 ? 16 : 64);
 				}
 			}
 		}
@@ -1079,6 +1095,11 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 	}
 
 	float pixel_width_height_ratio = 1.0f;
+	int64_t bitrate = -1;
+	gboolean bitrate_valid = TRUE;
+	gboolean cbr = FALSE;
+	gboolean cbr_set = FALSE;
+	gboolean cbr_valid = TRUE;
 	gboolean vui_parameters_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 	if (vui_parameters_present_flag) {
 		gboolean aspect_ratio_info_present_flag = read_bit(buffer, &bit_offset, bit_limit);
@@ -1093,13 +1114,136 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 			} else if (aspect_ratio_idc < ASPECT_RATIO_IDC_VALUES_LENGTH) {
 				pixel_width_height_ratio = ASPECT_RATIO_IDC_VALUES[aspect_ratio_idc];
 			} else {
-				JANUS_LOG(LOG_WARN, "Unexpected aspect_ratio_idc value: 0x%X!", aspect_ratio_idc);
+				JANUS_LOG(LOG_WARN, "Unexpected aspect_ratio_idc value: 0x%X!\n", aspect_ratio_idc);
 			}
 		}
+		gboolean overscan_info_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if(overscan_info_present_flag) {
+			gboolean overscan_appropriate_flag = read_bit(buffer, &bit_offset, bit_limit);
+		}
+		gboolean video_signal_type_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if(video_signal_type_present_flag) {
+			int video_format = read_bits(buffer, &bit_offset, bit_limit, 3);
+			gboolean video_full_range_flag = read_bit(buffer, &bit_offset, bit_limit);
+			gboolean colour_description_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+			if(colour_description_present_flag) {
+				int colour_primaries = read_bits(buffer, &bit_offset, bit_limit, 8);
+				int transfer_characteristics = read_bits(buffer, &bit_offset, bit_limit, 8);
+				int matrix_coefficients = read_bits(buffer, &bit_offset, bit_limit, 8);
+			}
+		}
+		gboolean chroma_loc_info_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if(chroma_loc_info_present_flag) {
+			int chroma_sample_loc_type_top_field = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			int chroma_sample_loc_type_bottom_field = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+		}
+		gboolean timing_info_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if(timing_info_present_flag) {
+			uint32_t num_units_in_tick = read_bits(buffer, &bit_offset, bit_limit, 32);
+			uint32_t time_scale = read_bits(buffer, &bit_offset, bit_limit, 32);
+			gboolean fixed_frame_rate_flag = read_bit(buffer, &bit_offset, bit_limit);
+		}
+		gboolean nal_hrd_parameters_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if(nal_hrd_parameters_present_flag) {
+			int cpb_cnt_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			/*
+			if (cpb_cnt_minus1 > 0) {
+				JANUS_LOG(LOG_WARN, "cpb_cnt_minus1 is greater than 0!\n");
+			}
+			*/
+			int bit_rate_scale = read_bits(buffer, &bit_offset, bit_limit, 4);
+			int cpb_size_scale = read_bits(buffer, &bit_offset, bit_limit, 4);
+			for(int SchedSelIdx = 0; SchedSelIdx <= cpb_cnt_minus1; SchedSelIdx++ ) {
+				int bit_rate_value_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//bit_rate_value_minus1[ SchedSelIdx ]
+				//                                                                         (6 + bit_rate_scale)
+				//BitRate[ SchedSelIdx ] = ( bit_rate_value_minus1[ SchedSelIdx ] + 1 ) * 2
+        uint64_t bit_rate_value=(uint64_t)((bit_rate_value_minus1+1)*pow(2.0, 6+bit_rate_scale));
+				int cpb_size_value_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//cpb_size_value_minus1[ SchedSelIdx ]
+				//                                                                         (4 + cpb_size_scale)
+				//CpbSize[ SchedSelIdx ] = ( cpb_size_value_minus1[ SchedSelIdx ] + 1 ) * 2
+				uint64_t cpb_size_value=(uint64_t)((cpb_size_value_minus1+1)*pow(2.0, 4+cpb_size_scale));
+				gboolean cbr_flag = read_bit(buffer, &bit_offset, bit_limit);//cbr_flag[ SchedSelIdx ]
+				//JANUS_LOG(LOG_INFO, "bitrate %lu bps, CPB %lu bits, %s.\n", bit_rate_value, cpb_size_value, ((cbr_flag)?"CBR":"VBR"));
+				if (bitrate == -1 && 0 < bit_rate_value) {
+					bitrate = bit_rate_value;
+				} else if (bitrate > 0 && bitrate != bit_rate_value) {
+					bitrate_valid = FALSE;
+				}
+				if (TRUE == cbr_set && cbr != cbr_flag) {
+					cbr_valid = FALSE;
+				} else if (FALSE == cbr_set) {
+					cbr_set = TRUE;
+					cbr = cbr_flag;
+				}
+			}
+			int initial_cpb_removal_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
+			int cpb_removal_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
+			int dpb_output_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
+			int time_offset_length = read_bits(buffer, &bit_offset, bit_limit, 5);
+		}
+		gboolean vcl_hrd_parameters_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if(vcl_hrd_parameters_present_flag) {
+			int cpb_cnt_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			/*
+			if (cpb_cnt_minus1 > 0) {
+				JANUS_LOG(LOG_WARN, "cpb_cnt_minus1 is greater than 0!\n");
+			}
+			*/
+			int bit_rate_scale = read_bits(buffer, &bit_offset, bit_limit, 4);
+			int cpb_size_scale = read_bits(buffer, &bit_offset, bit_limit, 4);
+			for(int SchedSelIdx = 0; SchedSelIdx <= cpb_cnt_minus1; SchedSelIdx++ ) {
+				int bit_rate_value_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//bit_rate_value_minus1[ SchedSelIdx ]
+				//                                                                         (6 + bit_rate_scale)
+				//BitRate[ SchedSelIdx ] = ( bit_rate_value_minus1[ SchedSelIdx ] + 1 ) * 2
+        uint64_t bit_rate_value=(uint64_t)((bit_rate_value_minus1+1)*pow(2.0, 6+bit_rate_scale));
+				int cpb_size_value_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//cpb_size_value_minus1[ SchedSelIdx ]
+				//                                                                         (4 + cpb_size_scale)
+				//CpbSize[ SchedSelIdx ] = ( cpb_size_value_minus1[ SchedSelIdx ] + 1 ) * 2
+				uint64_t cpb_size_value=(uint64_t)((cpb_size_value_minus1+1)*pow(2.0, 4+cpb_size_scale));
+				gboolean cbr_flag = read_bit(buffer, &bit_offset, bit_limit);//cbr_flag[ SchedSelIdx ]
+				//JANUS_LOG(LOG_INFO, "bitrate %lu bps, CPB %lu bits, %s.\n", bit_rate_value, cpb_size_value, ((cbr_flag)?"CBR":"VBR"));
+				if (bitrate == -1 && 0 < bit_rate_value) {
+					bitrate = bit_rate_value;
+				} else if (bitrate > 0 && bitrate != bit_rate_value) {
+					bitrate_valid = FALSE;
+				}
+				if (TRUE == cbr_set && cbr != cbr_flag) {
+					cbr_valid = FALSE;
+				} else if (FALSE == cbr_set) {
+					cbr_set = TRUE;
+					cbr = cbr_flag;
+				}
+			}
+			int initial_cpb_removal_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
+			int cpb_removal_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
+			int dpb_output_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
+			int time_offset_length = read_bits(buffer, &bit_offset, bit_limit, 5);
+		}
+		if(nal_hrd_parameters_present_flag || vcl_hrd_parameters_present_flag) {
+			gboolean low_delay_hrd_flag = read_bit(buffer, &bit_offset, bit_limit);
+		}
+		gboolean pic_struct_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		gboolean bitstream_restriction_flag = read_bit(buffer, &bit_offset, bit_limit);
+		if(bitstream_restriction_flag) {
+			gboolean motion_vectors_over_pic_boundaries_flag = read_bit(buffer, &bit_offset, bit_limit);
+			int max_bytes_per_pic_denom = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			int max_bits_per_mb_denom = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			int log2_max_mv_length_horizontal = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			int log2_max_mv_length_vertical = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			int max_num_reorder_frames = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			int max_dec_frame_buffering = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+		}
 	}
+
 	mediainfo->codec = "h264";
 	mediainfo->width  = frame_width;
 	mediainfo->height = frame_height;
+	if (TRUE == bitrate_valid && 0 < bitrate) {
+		mediainfo->bitrate = bitrate;
+	}
+	if (TRUE == cbr_valid && TRUE == cbr_set) {
+		mediainfo->cbr = cbr;
+	}
 	mediainfo->pixel_aspect_ratio = pixel_width_height_ratio;
 	mediainfo->ref_frames = max_num_ref_frames;
 	mediainfo->profile = janus_h264_profile_str(profile_idc);
