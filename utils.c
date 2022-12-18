@@ -843,11 +843,35 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len) {
 	return FALSE;
 }
 
-gboolean skip_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits) {
-	if(num_bits > 31 || bit_limit - *bit_offset < num_bits) {
+gboolean inc_bit_offset(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit) {
+	if (*bit_offset >= (bit_limit - 1)) {
 		return FALSE;
 	}
-	*bit_offset += num_bits;
+	uint32_t byte_offset = (*bit_offset)/8;
+	uint32_t byte_offset_plus = ((*bit_offset)+1)/8;
+	if (byte_offset == byte_offset_plus || 14 > *bit_offset) {
+		*bit_offset += 1;
+		return TRUE;
+	} else if (!(buffer[byte_offset_plus] == 0x03u && buffer[byte_offset_plus-1] == 0x00u && buffer[byte_offset_plus-2] == 0x00)) {
+		*bit_offset += 1;
+		return TRUE;
+	} else if (*bit_offset < (bit_limit - 9)) {
+		*bit_offset += 9;
+		return TRUE;
+	} else {
+		return FALSE;
+	}
+}
+
+gboolean skip_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits) {
+	if(bit_limit - *bit_offset < num_bits) {
+		return FALSE;
+	}
+	for(uint32_t i = 0; i < num_bits; i++) {
+		if (!inc_bit_offset(buffer, bit_offset, bit_limit)) {
+			return FALSE;
+		}
+	}
 	return TRUE;
 }
 
@@ -873,7 +897,9 @@ uint32_t read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit,
 			return_value |= 0x00000001u;
 		}
 		bit_count++;
-		*bit_offset += 1;
+		if(!inc_bit_offset(buffer, bit_offset, bit_limit)) {
+			return -1;
+		}
 	}
 
 	return return_value;
