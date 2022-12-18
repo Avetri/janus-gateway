@@ -1031,12 +1031,11 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 	uint32_t bit_limit = len*8;
 	skip_bits(buffer, &bit_offset, bit_limit, 8);//Skip NAL start (7)
 	int profile_idc = read_bits(buffer, &bit_offset, bit_limit, 8);
-	int constraints_flags_and_reserved_zero_2bits = read_bits(buffer, &bit_offset, bit_limit, 8);
+	read_bits(buffer, &bit_offset, bit_limit, 8);//int constraints_flags_and_reserved_zero_2bits
 	int level_idc = read_bits(buffer, &bit_offset, bit_limit, 8);
-	int seq_parameter_set_id = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+	read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int seq_parameter_set_id
 
 	int chroma_format_idc = 1; // Default is 4:2:0
-	gboolean separate_color_plane_flag = FALSE;
 	if(profile_idc == 100
 			|| profile_idc == 110
 			|| profile_idc == 122
@@ -1052,7 +1051,7 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 			|| profile_idc == 135) {
 		chroma_format_idc = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
 		if(chroma_format_idc == 3) {
-			separate_color_plane_flag = read_bit(buffer, &bit_offset, bit_limit);
+			read_bit(buffer, &bit_offset, bit_limit);//gboolean separate_color_plane_flag
 		}
 		read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // bit_depth_luma_minus8
 		read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // bit_depth_chroma_minus8
@@ -1069,15 +1068,12 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 		}
 	}
 
-	int frame_num_length = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit) + 4; // log2_max_frame_num_minus4 + 4
+	read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int log2_max_frame_num_minus4
 	int pic_order_cnt_type = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
-	int pic_order_cnt_lsb_length = 0;
-	gboolean delta_pic_order_always_zero_flag = FALSE;
 	if(pic_order_cnt_type == 0) {
-		// log2_max_pic_order_cnt_lsb_minus4 + 4
-		pic_order_cnt_lsb_length = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit) + 4;
+		read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int log2_max_pic_order_cnt_lsb_minus4
 	} else if(pic_order_cnt_type == 1) {
-		delta_pic_order_always_zero_flag = read_bit(buffer, &bit_offset, bit_limit); // delta_pic_order_always_zero_flag
+		gboolean delta_pic_order_always_zero_flag = delta_pic_order_always_zero_flag = read_bit(buffer, &bit_offset, bit_limit); // delta_pic_order_always_zero_flag
 		read_signed_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // offset_for_non_ref_pic
 		read_signed_exp_golomb_coded_int(buffer, &bit_offset, bit_limit); // offset_for_top_to_bottom_field
 		long num_ref_frames_in_pic_order_cnt_cycle = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
@@ -1145,29 +1141,29 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 		}
 		gboolean overscan_info_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 		if(overscan_info_present_flag) {
-			gboolean overscan_appropriate_flag = read_bit(buffer, &bit_offset, bit_limit);
+			read_bit(buffer, &bit_offset, bit_limit);//gboolean overscan_appropriate_flag
 		}
 		gboolean video_signal_type_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 		if(video_signal_type_present_flag) {
-			int video_format = read_bits(buffer, &bit_offset, bit_limit, 3);
-			gboolean video_full_range_flag = read_bit(buffer, &bit_offset, bit_limit);
+			read_bits(buffer, &bit_offset, bit_limit, 3);//int video_format
+			read_bit(buffer, &bit_offset, bit_limit);//gboolean video_full_range_flag
 			gboolean colour_description_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 			if(colour_description_present_flag) {
-				int colour_primaries = read_bits(buffer, &bit_offset, bit_limit, 8);
-				int transfer_characteristics = read_bits(buffer, &bit_offset, bit_limit, 8);
-				int matrix_coefficients = read_bits(buffer, &bit_offset, bit_limit, 8);
+				read_bits(buffer, &bit_offset, bit_limit, 8);//int colour_primaries
+				read_bits(buffer, &bit_offset, bit_limit, 8);//int transfer_characteristics
+				read_bits(buffer, &bit_offset, bit_limit, 8);//int matrix_coefficients
 			}
 		}
 		gboolean chroma_loc_info_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 		if(chroma_loc_info_present_flag) {
-			int chroma_sample_loc_type_top_field = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
-			int chroma_sample_loc_type_bottom_field = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int chroma_sample_loc_type_top_field
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int chroma_sample_loc_type_bottom_field
 		}
 		gboolean timing_info_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 		if(timing_info_present_flag) {
-			uint32_t num_units_in_tick = read_bits(buffer, &bit_offset, bit_limit, 32);
-			uint32_t time_scale = read_bits(buffer, &bit_offset, bit_limit, 32);
-			gboolean fixed_frame_rate_flag = read_bit(buffer, &bit_offset, bit_limit);
+			read_bits(buffer, &bit_offset, bit_limit, 32);//uint32_t num_units_in_tick
+			read_bits(buffer, &bit_offset, bit_limit, 32);//uint32_t time_scale
+			read_bit(buffer, &bit_offset, bit_limit);//gboolean fixed_frame_rate_flag
 		}
 		gboolean nal_hrd_parameters_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 		if(nal_hrd_parameters_present_flag) {
@@ -1178,16 +1174,16 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 			}
 			*/
 			int bit_rate_scale = read_bits(buffer, &bit_offset, bit_limit, 4);
-			int cpb_size_scale = read_bits(buffer, &bit_offset, bit_limit, 4);
+			read_bits(buffer, &bit_offset, bit_limit, 4);//int cpb_size_scale
 			for(int SchedSelIdx = 0; SchedSelIdx <= cpb_cnt_minus1; SchedSelIdx++ ) {
 				int bit_rate_value_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//bit_rate_value_minus1[ SchedSelIdx ]
 				//                                                                         (6 + bit_rate_scale)
 				//BitRate[ SchedSelIdx ] = ( bit_rate_value_minus1[ SchedSelIdx ] + 1 ) * 2
-        uint64_t bit_rate_value=(uint64_t)((bit_rate_value_minus1+1)*pow(2.0, 6+bit_rate_scale));
-				int cpb_size_value_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//cpb_size_value_minus1[ SchedSelIdx ]
+        int64_t bit_rate_value=(int64_t)((bit_rate_value_minus1+1)*pow(2.0, 6+bit_rate_scale));
+				read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int cpb_size_value_minus1 //cpb_size_value_minus1[ SchedSelIdx ]
 				//                                                                         (4 + cpb_size_scale)
 				//CpbSize[ SchedSelIdx ] = ( cpb_size_value_minus1[ SchedSelIdx ] + 1 ) * 2
-				uint64_t cpb_size_value=(uint64_t)((cpb_size_value_minus1+1)*pow(2.0, 4+cpb_size_scale));
+				//(int64_t)((cpb_size_value_minus1+1)*pow(2.0, 4+cpb_size_scale));//int64_t cpb_size_value
 				gboolean cbr_flag = read_bit(buffer, &bit_offset, bit_limit);//cbr_flag[ SchedSelIdx ]
 				//JANUS_LOG(LOG_INFO, "bitrate %lu bps, CPB %lu bits, %s.\n", bit_rate_value, cpb_size_value, ((cbr_flag)?"CBR":"VBR"));
 				if (bitrate == -1 && 0 < bit_rate_value) {
@@ -1202,10 +1198,10 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 					cbr = cbr_flag;
 				}
 			}
-			int initial_cpb_removal_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
-			int cpb_removal_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
-			int dpb_output_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
-			int time_offset_length = read_bits(buffer, &bit_offset, bit_limit, 5);
+			read_bits(buffer, &bit_offset, bit_limit, 5);//int initial_cpb_removal_delay_length_minus1
+			read_bits(buffer, &bit_offset, bit_limit, 5);//int cpb_removal_delay_length_minus1
+			read_bits(buffer, &bit_offset, bit_limit, 5);//int dpb_output_delay_length_minus1
+			read_bits(buffer, &bit_offset, bit_limit, 5);//int time_offset_length
 		}
 		gboolean vcl_hrd_parameters_present_flag = read_bit(buffer, &bit_offset, bit_limit);
 		if(vcl_hrd_parameters_present_flag) {
@@ -1216,16 +1212,16 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 			}
 			*/
 			int bit_rate_scale = read_bits(buffer, &bit_offset, bit_limit, 4);
-			int cpb_size_scale = read_bits(buffer, &bit_offset, bit_limit, 4);
+			read_bits(buffer, &bit_offset, bit_limit, 4);//int cpb_size_scale
 			for(int SchedSelIdx = 0; SchedSelIdx <= cpb_cnt_minus1; SchedSelIdx++ ) {
 				int bit_rate_value_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//bit_rate_value_minus1[ SchedSelIdx ]
 				//                                                                         (6 + bit_rate_scale)
 				//BitRate[ SchedSelIdx ] = ( bit_rate_value_minus1[ SchedSelIdx ] + 1 ) * 2
-        uint64_t bit_rate_value=(uint64_t)((bit_rate_value_minus1+1)*pow(2.0, 6+bit_rate_scale));
-				int cpb_size_value_minus1 = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//cpb_size_value_minus1[ SchedSelIdx ]
+        int64_t bit_rate_value=(int64_t)((bit_rate_value_minus1+1)*pow(2.0, 6+bit_rate_scale));
+				read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int cpb_size_value_minus1 //cpb_size_value_minus1[ SchedSelIdx ]
 				//                                                                         (4 + cpb_size_scale)
 				//CpbSize[ SchedSelIdx ] = ( cpb_size_value_minus1[ SchedSelIdx ] + 1 ) * 2
-				uint64_t cpb_size_value=(uint64_t)((cpb_size_value_minus1+1)*pow(2.0, 4+cpb_size_scale));
+				//(int64_t)((cpb_size_value_minus1+1)*pow(2.0, 4+cpb_size_scale));//int64_t cpb_size_value
 				gboolean cbr_flag = read_bit(buffer, &bit_offset, bit_limit);//cbr_flag[ SchedSelIdx ]
 				//JANUS_LOG(LOG_INFO, "bitrate %lu bps, CPB %lu bits, %s.\n", bit_rate_value, cpb_size_value, ((cbr_flag)?"CBR":"VBR"));
 				if (bitrate == -1 && 0 < bit_rate_value) {
@@ -1240,24 +1236,24 @@ int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_media
 					cbr = cbr_flag;
 				}
 			}
-			int initial_cpb_removal_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
-			int cpb_removal_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
-			int dpb_output_delay_length_minus1 = read_bits(buffer, &bit_offset, bit_limit, 5);
-			int time_offset_length = read_bits(buffer, &bit_offset, bit_limit, 5);
+			read_bits(buffer, &bit_offset, bit_limit, 5);//int initial_cpb_removal_delay_length_minus1
+			read_bits(buffer, &bit_offset, bit_limit, 5);//int cpb_removal_delay_length_minus1
+			read_bits(buffer, &bit_offset, bit_limit, 5);//int dpb_output_delay_length_minus1
+			read_bits(buffer, &bit_offset, bit_limit, 5);//int time_offset_length
 		}
 		if(nal_hrd_parameters_present_flag || vcl_hrd_parameters_present_flag) {
-			gboolean low_delay_hrd_flag = read_bit(buffer, &bit_offset, bit_limit);
+			read_bit(buffer, &bit_offset, bit_limit);//gboolean low_delay_hrd_flag
 		}
-		gboolean pic_struct_present_flag = read_bit(buffer, &bit_offset, bit_limit);
+		read_bit(buffer, &bit_offset, bit_limit);//gboolean pic_struct_present_flag
 		gboolean bitstream_restriction_flag = read_bit(buffer, &bit_offset, bit_limit);
 		if(bitstream_restriction_flag) {
-			gboolean motion_vectors_over_pic_boundaries_flag = read_bit(buffer, &bit_offset, bit_limit);
-			int max_bytes_per_pic_denom = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
-			int max_bits_per_mb_denom = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
-			int log2_max_mv_length_horizontal = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
-			int log2_max_mv_length_vertical = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
-			int max_num_reorder_frames = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
-			int max_dec_frame_buffering = read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);
+			read_bit(buffer, &bit_offset, bit_limit);//gboolean motion_vectors_over_pic_boundaries_flag
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int max_bytes_per_pic_denom
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int max_bits_per_mb_denom
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int log2_max_mv_length_horizontal
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int log2_max_mv_length_vertical
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int max_num_reorder_frames
+			read_unsigned_exp_golomb_coded_int(buffer, &bit_offset, bit_limit);//int max_dec_frame_buffering
 		}
 	}
 
