@@ -487,6 +487,7 @@ uint32_t janus_bitstream_getbits(uint8_t *base, uint8_t num, uint32_t *offset);
  */
 size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen);
 
+gboolean inc_bit_offset(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
 gboolean skip_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits);
 gboolean skip_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
 uint32_t read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits);
