@@ -8532,17 +8532,11 @@ static void *janus_streaming_relay_thread(void *data) {
 		close(source->audio_fd);
 		source->audio_fd = -1;
 	}
-	if(source->video_fd[0] > -1) {
-		close(source->video_fd[0]);
-		source->video_fd[0] = -1;
-	}
-	if(source->video_fd[1] > -1) {
-		close(source->video_fd[1]);
-		source->video_fd[1] = -1;
-	}
-	if(source->video_fd[2] > -1) {
-		close(source->video_fd[2]);
-		source->video_fd[2] = -1;
+	for(uint8_t i=0; i<source->video_ports_length; i++) {
+		if(source->video_fds[i] > -1) {
+			close(source->video_fds[i]);
+			source->video_fds[i] = -1;
+		}
 	}
 	if(source->data_fd > -1) {
 		close(source->data_fd);
