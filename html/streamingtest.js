@@ -305,7 +305,8 @@ function getStreamInfo() {
 	if(!selectedStream)
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
-	var body = { request: "info", id: parseInt(selectedStream) || selectedStream };
+	var id = (parseInt(selectedStream, 10).toString() === selectedStream.toString())?parseInt(selectedStream, 10):selectedStream;
+	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info && result.info.metadata) {
 			$('#metadata').html(escapeXmlTags(result.info.metadata));
@@ -326,7 +327,8 @@ function startStream() {
 	$('#streamset').attr('disabled', true);
 	$('#streamslist').attr('disabled', true);
 	$('#watch').attr('disabled', true).unbind('click');
-	var body = { request: "watch", id: parseInt(selectedStream) || selectedStream};
+	var id = (parseInt(selectedStream, 10).toString() === selectedStream.toString())?parseInt(selectedStream, 10):selectedStream;
+	var body = { request: "watch", id: id};
 	streaming.send({ message: body });
 	// No remote video yet
 	$('#stream').append('<video class="rounded centered" id="waitingvideo" width="100%" height="100%" />');
