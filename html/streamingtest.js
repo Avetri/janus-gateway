@@ -289,6 +289,7 @@ function updateStreamsList() {
 				selectedStream = $(this).attr("id");
 				$('#streamset').html($(this).html()).parent().removeClass('open');
 				$('#list .dropdown-backdrop').remove();
+				getStreamInfo();
 				return false;
 
 			});
