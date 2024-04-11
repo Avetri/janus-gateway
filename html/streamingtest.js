@@ -311,7 +311,7 @@ function getStreamInfo() {
 	var id = (parseInt(selectedStream, 10).toString() === selectedStream.toString())?parseInt(selectedStream, 10):selectedStream;
 	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
-		if(result && result.info && result.info.metadata) {
+		if(result && result.info) {
 			if (result.info.metadata) {
 				$('#metadata').html(escapeXmlTags(result.info.metadata));
 			}
