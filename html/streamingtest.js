@@ -233,6 +233,7 @@ $(document).ready(function() {
 									bitrateTimer = null;
 									$('#curres').hide();
 									$('#simulcast').remove();
+									$('#mediainfo').empty();
 									$('#metadata').empty();
 									$('#info').addClass('hide').hide();
 									simulcastStarted = false;
@@ -301,6 +302,7 @@ function updateStreamsList() {
 let videoSlNumber = 0;
 
 function getStreamInfo() {
+	$('#mediainfo').empty();
 	$('#metadata').empty();
 	$('#info').addClass('hide').hide();
 	if(!selectedStream)
@@ -310,7 +312,12 @@ function getStreamInfo() {
 	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info && result.info.metadata) {
-			$('#metadata').html(escapeXmlTags(result.info.metadata));
+			if (result.info.metadata) {
+				$('#metadata').html(escapeXmlTags(result.info.metadata));
+			}
+			if (result.info.video_mediainfo && 0 < result.info.video_mediainfo.length) {
+				$('#mediainfo').html(escapeXmlTags(result.info.video_mediainfo));
+			}
 			$('#info').removeClass('hide').show();
 		}
 		if(result && result.info && result.info.video_sl_number > 0) {
