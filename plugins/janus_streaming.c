@@ -2573,6 +2573,11 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			json_object_set_new(ml, "id", string_ids ? json_string(mp->id_str) : json_integer(mp->id));
 			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
 			json_object_set_new(ml, "description", json_string(mp->description));
+			if(mp->video_mediainfo) {
+				char * mi = json_streaming_mediainfos_string(mp->video_mediainfo, mp->videos_amount);
+				json_object_set_new(ml, "video_mediainfo", json_string(mi));
+				g_free(mi);
+			}
 			if(mp->metadata) {
 				json_object_set_new(ml, "metadata", json_string(mp->metadata));
 			}
