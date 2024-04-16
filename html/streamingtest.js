@@ -233,6 +233,8 @@ $(document).ready(function() {
 									bitrateTimer = null;
 									$('#curres').hide();
 									$('#simulcast').remove();
+									$('#labels').empty();
+									$('#mediainfo').empty();
 									$('#metadata').empty();
 									$('#info').addClass('hide').hide();
 									simulcastStarted = false;
@@ -289,6 +291,7 @@ function updateStreamsList() {
 				selectedStream = $(this).attr("id");
 				$('#streamset').html($(this).html()).parent().removeClass('open');
 				$('#list .dropdown-backdrop').remove();
+				getStreamInfo();
 				return false;
 
 			});
@@ -300,7 +303,9 @@ function updateStreamsList() {
 let videoSlNumber = 0;
 
 function getStreamInfo() {
+	$('#mediainfo').empty();
 	$('#metadata').empty();
+	$('#labels').empty();
 	$('#info').addClass('hide').hide();
 	if(!selectedStream)
 		return;
@@ -308,8 +313,25 @@ function getStreamInfo() {
 	var id = (parseInt(selectedStream, 10).toString() === selectedStream.toString())?parseInt(selectedStream, 10):selectedStream;
 	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
-		if(result && result.info && result.info.metadata) {
-			$('#metadata').html(escapeXmlTags(result.info.metadata));
+		if(result && result.info) {
+			if (result.info.labels && 0 < result.info.labels.length) {
+				let:txt = "[";
+				for (idx=0; idx<result.info.labels.length; idx++) {
+					l = result.info.labels[idx];
+					txt += "\"" + l + "\"";
+					if (idx < result.info.labels.length-1) {
+						txt += ", ";
+					}
+				}
+				txt += "]";
+				$('#labels').html(txt);
+			}
+			if (result.info.metadata) {
+				$('#metadata').html(escapeXmlTags(result.info.metadata));
+			}
+			if (result.info.video_mediainfo && 0 < result.info.video_mediainfo.length) {
+				$('#mediainfo').html(escapeXmlTags(result.info.video_mediainfo));
+			}
 			$('#info').removeClass('hide').show();
 		}
 		if(result && result.info && result.info.video_sl_number > 0) {
