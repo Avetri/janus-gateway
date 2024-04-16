@@ -1916,6 +1916,10 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						continue;
 					}
 				}
+				if (NULL != vports) {
+					janus_config_container_destroy(vports);
+					vports = NULL;
+				}
 				if(dovideo && vrtcpport != NULL && vrtcpport->value != NULL &&
 						(janus_string_to_uint16(vrtcpport->value, &video_rtcp_port) < 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' mountpoint '%s', invalid video RTCP port...\n", cat->name);
@@ -2010,7 +2014,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						bufferkf,
 						simulcast,
 						video_ports_length,
-						(vports && vports->list) ? video_ports : NULL,
+						(video_ports && 0 < video_ports_length) ? video_ports : NULL,
 						dosvc,
 						dovskew,
 						(rtpcollision && rtpcollision->value) ?  atoi(rtpcollision->value) : 0,
@@ -3478,12 +3482,12 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						janus_config_add(config, c, janus_config_item_create("videofmtp", mp->codecs.video_fmtp));
 					if(source->keyframe.enabled)
 						janus_config_add(config, c, janus_config_item_create("videobufferkf", "yes"));
-					json_t *arr = json_array();
+					janus_config_array *gl = janus_config_array_create("videoports");
+					janus_config_add(config, c, gl);
 					for(int i=0; i<source->video_ports_length; i++) {
-						json_array_append(arr, json_integer(source->video_ports[i]));
+						g_snprintf(value, BUFSIZ, "%d", source->video_ports[i]);
+						janus_config_add(config, gl, janus_config_item_create(NULL, (char *)value));
 					}
-					g_snprintf(value, BUFSIZ, "%s", json_dumps(arr, 0));
-					janus_config_add(config, c, janus_config_item_create("videoports", value));
 					if(source->simulcast) {
 						janus_config_add(config, c, janus_config_item_create("videosimulcast", "yes"));
 					}
@@ -3803,12 +3807,12 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					}
 					janus_config_add(config, c, janus_config_item_create("video", mp->codecs.video_pt > 0 ? "yes" : "no"));
 					if(mp->codecs.video_pt > 0) {
-						json_t *arr = json_array();
-						for(uint8_t i=0; i<source->video_ports_length; i++) {
-							json_array_append(arr, json_integer(source->video_ports[i]));
+						janus_config_array *gl = janus_config_array_create("videoports");
+						janus_config_add(config, c, gl);
+						for(int i=0; i<source->video_ports_length; i++) {
+							g_snprintf(value, BUFSIZ, "%d", source->video_ports[i]);
+							janus_config_add(config, gl, janus_config_item_create(NULL, (char *)value));
 						}
-						g_snprintf(value, BUFSIZ, "%s", json_dumps(arr, 0));
-						janus_config_add(config, c, janus_config_item_create("videoports", value));
 						if(source->video_rtcp_port > 0) {
 							g_snprintf(value, BUFSIZ, "%d", source->video_rtcp_port);
 							janus_config_add(config, c, janus_config_item_create("videortcpport", value));
