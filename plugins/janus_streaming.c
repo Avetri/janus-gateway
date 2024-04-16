@@ -218,6 +218,7 @@ rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call ga
 			"id" : <unique ID of mountpoint #1>,
 			"type" : "<type of mountpoint #1, in line with the types introduced above>",
 			"description" : "<description of mountpoint #1>",
+			"video_mediainfo" : "<video mediainfo of mountpoint #1, if any>",
 			"metadata" : "<metadata of mountpoint #1, if any>",
 			"enabled" : <true|false, depending on whether the mountpoint is currently enabled or not>,
 			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
@@ -227,6 +228,7 @@ rtsp_conn_timeout = connection timeout for cURL (CURLOPT_CONNECTTIMEOUT) call ga
 			"id" : <unique ID of mountpoint #2>,
 			"type" : "<type of mountpoint #2, in line with the types introduced above>",
 			"description" : "<description of mountpoint #2>",
+			"video_mediainfo" : "<video mediainfo of mountpoint #2, if any>",
 			"metadata" : "<metadata of mountpoint #2, if any>",
 			"audio_age_ms" : <how much time passed since we last received audio; optional, available for RTP mountpoints only>,
 			"video_age_ms" : <how much time passed since we last received video; optional, available for RTP mountpoints only>
