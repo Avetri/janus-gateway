@@ -233,6 +233,7 @@ $(document).ready(function() {
 									bitrateTimer = null;
 									$('#curres').hide();
 									$('#simulcast').remove();
+									$('#labels').empty();
 									$('#mediainfo').empty();
 									$('#metadata').empty();
 									$('#info').addClass('hide').hide();
@@ -304,6 +305,7 @@ let videoSlNumber = 0;
 function getStreamInfo() {
 	$('#mediainfo').empty();
 	$('#metadata').empty();
+	$('#labels').empty();
 	$('#info').addClass('hide').hide();
 	if(!selectedStream)
 		return;
@@ -312,6 +314,18 @@ function getStreamInfo() {
 	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info) {
+			if (result.info.labels && 0 < result.info.labels.length) {
+				let:txt = "[";
+				for (idx=0; idx<result.info.labels.length; idx++) {
+					l = result.info.labels[idx];
+					txt += "\"" + l + "\"";
+					if (idx < result.info.labels.length-1) {
+						txt += ", ";
+					}
+				}
+				txt += "]";
+				$('#labels').html(txt);
+			}
 			if (result.info.metadata) {
 				$('#metadata').html(escapeXmlTags(result.info.metadata));
 			}
