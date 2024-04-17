@@ -233,6 +233,7 @@ $(document).ready(function() {
 									bitrateTimer = null;
 									$('#curres').hide();
 									$('#simulcast').remove();
+									$('#aliases').empty();
 									$('#labels').empty();
 									$('#mediainfo').empty();
 									$('#metadata').empty();
@@ -306,6 +307,7 @@ function getStreamInfo() {
 	$('#mediainfo').empty();
 	$('#metadata').empty();
 	$('#labels').empty();
+	$('#aliases').empty();
 	$('#info').addClass('hide').hide();
 	if(!selectedStream)
 		return;
@@ -314,6 +316,18 @@ function getStreamInfo() {
 	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info) {
+			if (result.info.aliases && 0 < result.info.aliases.length) {
+				let:txt = "[";
+				for (idx=0; idx<result.info.aliases.length; idx++) {
+					l = result.info.aliases[idx];
+					txt += "\"" + l + "\"";
+					if (idx < result.info.aliases.length-1) {
+						txt += ", ";
+					}
+				}
+				txt += "]";
+				$('#aliases').html(txt);
+			}
 			if (result.info.labels && 0 < result.info.labels.length) {
 				let:txt = "[";
 				for (idx=0; idx<result.info.labels.length; idx++) {
