@@ -316,9 +316,14 @@ function getStreamInfo() {
 	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info) {
-			if (result.info.aliases && 0 < result.info.aliases.length) {
-				let:txt = "[";
-				for (idx=0; idx<result.info.aliases.length; idx++) {
+			{
+				let:txt = "";
+				if (result.info.id) {
+					txt += "ID: " + result.info.id;
+					txt += ", ";
+				}
+				txt += "ID aliases: [";
+				for (idx=0; idx<(result.info.aliases?result.info.aliases.length:-1); idx++) {
 					l = result.info.aliases[idx];
 					txt += "\"" + l + "\"";
 					if (idx < result.info.aliases.length-1) {
