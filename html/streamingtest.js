@@ -312,7 +312,7 @@ function getStreamInfo() {
 	if(!selectedStream)
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
-	var id = (parseInt(selectedStream, 10).toString() === selectedStream.toString())?parseInt(selectedStream, 10):selectedStream;
+	var id = selectedStream;
 	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info) {
@@ -368,7 +368,7 @@ function startStream() {
 	$('#streamset').attr('disabled', true);
 	$('#streamslist').attr('disabled', true);
 	$('#watch').attr('disabled', true).unbind('click');
-	var id = (parseInt(selectedStream, 10).toString() === selectedStream.toString())?parseInt(selectedStream, 10):selectedStream;
+	var id = selectedStream;
 	var body = { request: "watch", id: id};
 	streaming.send({ message: body });
 	// No remote video yet
