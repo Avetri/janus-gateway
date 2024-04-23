@@ -201,7 +201,7 @@ dir_absent = $(directory)-
 if WITH_SOURCE_DATE_EPOCH
 build_date = $(shell LC_ALL=C date --utc --date="@$(SOURCE_DATE_EPOCH)")
 else
-build_date = $(shell date)
+build_date = $(shell LC_ALL=C date --utc)
 endif
 
 version.c: FORCE | $(dir_target)

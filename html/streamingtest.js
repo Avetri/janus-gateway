@@ -233,6 +233,7 @@ $(document).ready(function() {
 									bitrateTimer = null;
 									$('#curres').hide();
 									$('#simulcast').remove();
+									$('#aliases').empty();
 									$('#labels').empty();
 									$('#mediainfo').empty();
 									$('#metadata').empty();
@@ -306,14 +307,32 @@ function getStreamInfo() {
 	$('#mediainfo').empty();
 	$('#metadata').empty();
 	$('#labels').empty();
+	$('#aliases').empty();
 	$('#info').addClass('hide').hide();
 	if(!selectedStream)
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
-	var id = (parseInt(selectedStream, 10).toString() === selectedStream.toString())?parseInt(selectedStream, 10):selectedStream;
+	var id = selectedStream;
 	var body = { request: "info", id: id };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info) {
+			{
+				let:txt = "";
+				if (result.info.id) {
+					txt += "ID: " + result.info.id;
+					txt += ", ";
+				}
+				txt += "ID aliases: [";
+				for (idx=0; idx<(result.info.aliases?result.info.aliases.length:-1); idx++) {
+					l = result.info.aliases[idx];
+					txt += "\"" + l + "\"";
+					if (idx < result.info.aliases.length-1) {
+						txt += ", ";
+					}
+				}
+				txt += "]";
+				$('#aliases').html(txt);
+			}
 			if (result.info.labels && 0 < result.info.labels.length) {
 				let:txt = "[";
 				for (idx=0; idx<result.info.labels.length; idx++) {
@@ -349,7 +368,7 @@ function startStream() {
 	$('#streamset').attr('disabled', true);
 	$('#streamslist').attr('disabled', true);
 	$('#watch').attr('disabled', true).unbind('click');
-	var id = (parseInt(selectedStream, 10).toString() === selectedStream.toString())?parseInt(selectedStream, 10):selectedStream;
+	var id = selectedStream;
 	var body = { request: "watch", id: id};
 	streaming.send({ message: body });
 	// No remote video yet
