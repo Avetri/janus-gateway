@@ -329,6 +329,7 @@ multistream-test: {
 			"id" : <unique ID of mountpoint #1>,
 			"type" : "<type of mountpoint #1, in line with the types introduced above>",
 			"description" : "<description of mountpoint #1>",
+			"video_mediainfo" : "<video mediainfo of mountpoint #1, if any>",
 			"metadata" : "<metadata of mountpoint #1, if any>",
 			"enabled" : <true|false, depending on whether the mountpoint is currently enabled or not>,
 			"media" : [
@@ -348,6 +349,7 @@ multistream-test: {
 			"id" : <unique ID of mountpoint #2>,
 			"type" : "<type of mountpoint #2, in line with the types introduced above>",
 			"description" : "<description of mountpoint #2>",
+			"video_mediainfo" : "<video mediainfo of mountpoint #2, if any>",
 			"metadata" : "<metadata of mountpoint #2, if any>",
 			"media" : [..]
 		},
@@ -394,6 +396,7 @@ multistream-test: {
 				"type" : "<audio|video|data">,
 				"label" : "<unique text label of this stream>",
 				"msid" : "<msid of this stream, if configured>",
+				"video_mediainfo" : "<JSON array of spatial layers mediainfos>",
 				"age_ms" : <how much time passed since we last received media for this stream; optional>,
 				"pt" : <payload type, only present if RTP and configured>,
 				"codec" : "<cocec name value, only present if RTP and configured>",
@@ -1304,6 +1307,8 @@ static void janus_streaming_relay_rtp_packet(gpointer data, gpointer user_data);
 static void janus_streaming_relay_rtcp_packet(gpointer data, gpointer user_data);
 static void *janus_streaming_relay_thread(void *data);
 static void janus_streaming_hangup_media_internal(janus_plugin_session *handle);
+json_t * json_streaming_mediainfo_object(janus_video_mediainfo *mi, int idx);
+char * json_streaming_mediainfos_string(janus_video_mediainfo *mis, int length);
 
 typedef enum janus_streaming_type {
 	janus_streaming_type_none = 0,
@@ -1451,12 +1456,15 @@ static janus_streaming_media janus_streaming_parse_media(const char *type) {
 	return JANUS_STREAMING_MEDIA_NONE;
 }
 
+// TODO: Replace janus_video_mediainfo * janus_streaming_rtp_source_stream::video_mediainfo by a GList
+
 typedef struct janus_streaming_rtp_source_stream {
 	int mindex;
 	janus_streaming_media type;
 	char *mid, *label, *msid, *mstid;
 	janus_streaming_codecs codecs;
 	char *host;
+	janus_video_mediainfo *video_mediainfo;
 	gint port[3], remote_port;
 	gint rtcp_port, remote_rtcp_port;
 	in_addr_t mcast;
@@ -3198,6 +3206,43 @@ json_t *janus_streaming_query_session(janus_plugin_session *handle) {
 	return info;
 }
 
+json_t * json_streaming_mediainfo_object(janus_video_mediainfo *mi, int idx) {
+	if(NULL == mi ||
+		0 >= mi->port ||
+		0 == mi->width ||
+		0 == mi->height) {
+		return NULL;
+	}
+	json_t * obj = json_object();
+	json_object_set_new(obj, "index", json_integer(idx));
+	json_object_set_new(obj, "port", json_integer(mi->port));
+	json_object_set_new(obj, "type", json_string("video"));
+	json_object_set_new(obj, "codec", json_string(mi->codec));
+	json_object_set_new(obj, "width", json_integer(mi->width));
+	json_object_set_new(obj, "height", json_integer(mi->height));
+	json_object_set_new(obj, "bitrate", json_integer(mi->bitrate));
+	json_object_set_new(obj, "cbr", json_boolean(mi->cbr));
+	json_object_set_new(obj, "ref_frames", json_integer(mi->ref_frames));
+	json_object_set_new(obj, "profile", json_string(mi->profile));
+	json_object_set_new(obj, "level", json_string(mi->level));
+	json_object_set_new(obj, "chroma_subsampling", json_string(mi->chroma_subsampling));
+	json_object_set_new(obj, "pixel_aspect_ratio", json_real(mi->pixel_aspect_ratio));
+	return obj;
+}
+
+char * json_streaming_mediainfos_string(janus_video_mediainfo *mis, int length) {
+	json_t * arr = json_array();
+	for(int i=0; i < length; i++) {
+		json_t * cell = json_streaming_mediainfo_object(mis+i, i);
+		if(NULL != cell) {
+			json_array_append(arr, cell);
+		}
+	}
+	char * res = json_dumps(arr, JSON_COMPACT | JSON_ESCAPE_SLASH);
+	json_decref(arr);
+	return res;
+}
+
 /* Helper method to process synchronous requests */
 static json_t *janus_streaming_process_synchronous_request(janus_streaming_session *session, json_t *message) {
 	json_t *request = json_object_get(message, "request");
@@ -3263,6 +3308,11 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						char msid[150];
 						g_snprintf(msid, sizeof(msid), "%s %s", stream->msid, stream->mstid);
 						json_object_set_new(info, "msid", json_string(msid));
+					}
+					if(stream->video_mediainfo) {
+						char * mi = json_streaming_mediainfos_string(stream->video_mediainfo, (stream->simulcast)?3:1);
+						json_object_set_new(ml, "video_mediainfo", json_string(mi));
+						g_free(mi);
 					}
 					if(stream->fd[0] != -1 || stream->fd[1] != -1 || stream->fd[2] != -1)
 						json_object_set_new(info, "age_ms", json_integer((now - stream->last_received[0]) / 1000));
@@ -3432,6 +3482,11 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				}
 				if(stream->svc) {
 					json_object_set_new(info, "videosvc", json_true());
+				}
+				if(stream->video_mediainfo) {
+					char * mi = json_streaming_mediainfos_string(stream->video_mediainfo, (stream->simulcast)?3:1);
+					json_object_set_new(ml, "video_mediainfo", json_string(mi));
+					g_free(mi);
 				}
 				if(stream->skew)
 					json_object_set_new(info, "skew_compensation", json_true());
@@ -7656,6 +7711,7 @@ static void janus_streaming_rtp_source_stream_free(const janus_refcount *st_ref)
 	g_free(stream->label);
 	g_free(stream->msid);
 	g_free(stream->mstid);
+	g_free(stream->video_mediainfo);
 	g_free(stream->mcast_str);
 	g_free(stream->iface_str);
 	if(stream->rc != NULL) {
@@ -7847,6 +7903,13 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		}
 	}
 	stream->simulcast = (mtype == JANUS_STREAMING_MEDIA_VIDEO && simulcast);
+	if (mtype == JANUS_STREAMING_MEDIA_VIDEO) {
+		if (simulcast) {
+			stream->video_mediainfo = g_malloc0(sizeof(janus_video_mediainfo) * 3);
+		} else {
+			stream->video_mediainfo = g_malloc0(sizeof(janus_video_mediainfo));
+		}
+	}
 	stream->mcast = mcast ? inet_addr(mcast) : INADDR_ANY;
 	stream->mcast_str = mcast ? g_strdup(mcast) : NULL;
 	if(strlen(host) > 0)
@@ -10062,6 +10125,23 @@ static void *janus_streaming_relay_thread(void *data) {
 							name, stream->mindex, ssrc);
 						continue;
 					}
+
+					/* Get mediainfo for RTP video stream */
+					char *payload = NULL;
+					int plen = 0;
+					if (JANUS_VIDEOCODEC_H264 == stream->codecs.video_codec && (payload = janus_rtp_payload(buffer, bytes, &plen))) {
+						janus_video_mediainfo mi;
+						memset(&mi, 0, sizeof(janus_video_mediainfo));
+						if(janus_h264_is_keyframe_n_mi(payload, plen, &mi) && 0 < mi.width && 0 < mi.height) {
+							mi.port = stream->port[index];
+							if(memcmp(&mi, stream->video_mediainfo+index, sizeof(janus_video_mediainfo))) {
+								memcpy(stream->video_mediainfo+index, &mi, sizeof(janus_video_mediainfo));
+								JANUS_LOG(LOG_INFO, "[%s] ssrc=%"SCNu32", index %d, width %d, height %d, bitrate %ld.\n",
+								name, ssrc, index, mi.width, mi.height, mi.bitrate);
+							}
+						}
+					}
+
 					stream->last_received[index] = now;
 					/* Do we have a new stream? */
 					if(ssrc != stream->last_ssrc[index]) {

@@ -32,6 +32,20 @@ struct janus_json_parameter {
 	unsigned int flags;
 };
 
+typedef struct janus_video_mediainfo {
+	int port;
+	const char * codec;
+	int width;
+	int height;
+	uint64_t bitrate;
+	gboolean cbr;
+	float pixel_aspect_ratio;
+	int ref_frames;
+	const char * profile;
+	const char * level;
+	const char * chroma_subsampling;
+} janus_video_mediainfo;
+
 #ifndef htonll
 #define htonll(x) ((1==htonl(1)) ? (x) : ((guint64)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
 #endif
@@ -348,8 +362,10 @@ gboolean janus_vp9_is_keyframe(const char *buffer, int len);
  * instead, use the janus_h264_is_i_frame() function
  * @param[in] buffer The RTP payload to process
  * @param[in] len The length of the RTP payload
+ * @param[out] mediainfo A media information structure will be filled if it is a keyframe
  * @returns TRUE if it's a keyframe, FALSE otherwise */
 gboolean janus_h264_is_keyframe(const char *buffer, int len);
+gboolean janus_h264_is_keyframe_n_mi(const char *buffer, int len, janus_video_mediainfo *mediainfo);
 
 /*! \brief Helper method to check if an H.264 frame contains an I-Frame or not
  * @param[in] buffer The RTP payload to process
@@ -511,5 +527,21 @@ uint32_t janus_bitstream_getbits(uint8_t *base, uint8_t num, uint32_t *offset);
  * @returns The size of the compressed data, if successful, or 0 otherwise
  */
 size_t janus_gzip_compress(int compression, char *text, size_t tlen, char *compressed, size_t zlen);
+
+gboolean inc_bit_offset(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
+gboolean skip_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits);
+gboolean skip_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
+uint32_t read_bits(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, uint32_t num_bits);
+gboolean read_bit(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
+int read_exp_golomb_code_num(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
+int read_unsigned_exp_golomb_coded_int(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
+int read_signed_exp_golomb_coded_int(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit);
+void skip_scaling_list(const char *buffer, uint32_t *bit_offset, uint32_t bit_limit, int size);
+
+const char * janus_h264_profile_str(int profile_idc);
+const char * janus_h264_level_str(int level_idc);
+const char * janus_h264_chroma_subsampling_str(int chroma_format_idc);
+
+int janus_h264_get_mediainfo(const char *buffer, uint32_t len, janus_video_mediainfo *mediainfo);
 
 #endif

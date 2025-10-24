@@ -275,7 +275,8 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#videos').empty();
-									$('#info').addClass('hide');
+									$('#mediainfo_card').addClass('hide');
+									$('#metadata_card').addClass('hide');
 									for(let i in bitrateTimer)
 										clearInterval(bitrateTimer[i]);
 									bitrateTimer = {};
@@ -358,6 +359,7 @@ function updateStreamsList() {
 			$('#streamslist a').off('click').on('click', function() {
 				selectedStream = $(this).attr("id");
 				$('#streamset').html($(this).html());
+				getStreamInfo();
 			});
 			$('#watch').removeAttr('disabled').unbind('click').click(startStream);
 		}
@@ -365,16 +367,24 @@ function updateStreamsList() {
 }
 
 function getStreamInfo() {
+	$('#mediainfo').empty();
 	$('#metadata').empty();
-	$('#info').addClass('hide');
+	$('#mediainfo_card').addClass('hide');
+	$('#metadata_card').addClass('hide');
 	if(!selectedStream || !streamsList[selectedStream])
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
 	let body = { request: "info", id: parseInt(selectedStream) || selectedStream };
 	streaming.send({ message: body, success: function(result) {
-		if(result && result.info && result.info.metadata) {
-			$('#metadata').html(escapeXmlTags(result.info.metadata));
-			$('#info').removeClass('hide');
+		if(result && result.info) {
+			if (result.info.metadata) {
+				$('#metadata').html(escapeXmlTags(result.info.metadata));
+				$('#metadata_card').removeClass('hide');
+			}
+			if (result.info.video_mediainfo) {
+				$('#mediainfo').html(escapeXmlTags(result.info.video_mediainfo));
+				$('#mediainfo_card').removeClass('hide');
+			}
 		}
 	}});
 }
