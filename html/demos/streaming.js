@@ -374,7 +374,7 @@ function getStreamInfo() {
 	if(!selectedStream || !streamsList[selectedStream])
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
-	let body = { request: "info", id: parseInt(selectedStream) || selectedStream };
+	let body = { request: "info", id: selectedStream };
 	streaming.send({ message: body, success: function(result) {
 		if(result && result.info) {
 			if (result.info.metadata) {

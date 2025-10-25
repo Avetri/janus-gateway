@@ -19,7 +19,7 @@
 #                   (multiple listeners = different streaming contexts)
 #        rtsp = stream originated by an external RTSP feed (only
 #               available if libcurl support was compiled)
-# id = <unique numeric ID> (if missing, a random one will be generated)
+# id = <unique string ID> (if missing, a random one will be generated)
 # description = This is my awesome stream
 # metadata = An optional string that can contain any metadata (e.g., JSON)
 #		   associated with the stream you want users to receive
@@ -169,10 +169,6 @@ general: {
 									# passed as port for a mountpoint (default=10000-60000)
 	#events = false					# Whether events should be sent to event
 									# handlers (default=true)
-
-	# By default, integers are used as a unique ID for both mountpoints. In case
-	# you want to use strings instead (e.g., a UUID), set string_ids to true.
-	#string_ids = true
 }
 
 #
@@ -186,7 +182,7 @@ general: {
 #
 rtp-sample: {
 	type = "rtp"
-	id = 1
+	id = "1"
 	description = "Opus/VP8 live stream coming from external source"
 	metadata = "You can use this metadata section to put any info you want!"
 	audio = true
@@ -219,7 +215,7 @@ rtp-sample: {
 #
 multistream-test: {
 	type = "rtp"
-	id = 123
+	id = "123"
 	description = "Multistream test (1 audio, 2 video)"
 	metadata = "This is an example of a multistream mountpoint: you'll get an audio stream and two video feeds"
 	media = (
@@ -260,7 +256,7 @@ multistream-test: {
 #
 file-live-sample: {
 	type = "live"
-	id = 2
+	id = "2"
 	description = "Pseudo-live radio broadcast (a-law file source)"
 	metadata = "This is a pseudo-live stream, whose source is actually a static Opus file on the disk: the Streaming plugin goes through the file in real-time, and sends the frames via RTP. It's pseudo-live because it progresses even when there are no subscribers, and all subscribers get the same audio."
 	filename = "@streamdir@/radio.alaw"
@@ -279,7 +275,7 @@ file-live-sample: {
 #
 file-ondemand-sample: {
 	type = "ondemand"
-	id = 3
+	id = "3"
 	description = "Remembrance, by Lorenzo Miniero (stereo music, Opus)"
 	metadata = "This is an on-demand stream, whose source is actually a static Opus file on the disk: when a subscriber opens it, the Streaming plugin starts from the beginning and goes through the file in real-time, and sends the frames via RTP. Unlike the pseudo-live sample, each subscriber opening it will experience a personal playout."
 	filename = "@streamdir@/remembrance.opus"
@@ -302,7 +298,7 @@ file-ondemand-sample: {
 #
 #h264-sample: {
 	#type = "rtp"
-	#id = 10
+	#id = "10"
 	#description = "H.264 live stream coming from gstreamer"
 	#audio = false
 	#video = true
@@ -324,7 +320,7 @@ file-ondemand-sample: {
 #
 #data-example: {
 	#type = "rtp"
-	#id = 15
+	#id = "15"
 	#description = "Datachannel stream from an UDP source"
 	#audio = false
 	#video = false
@@ -341,7 +337,7 @@ file-ondemand-sample: {
 #
 #rtp-multicast: {
 	#type = "rtp"
-	#id = 20
+	#id = "20"
 	#description = "Opus/VP8 live multicast stream sample"
 	#audio = true
 	#video = true
@@ -367,7 +363,7 @@ file-ondemand-sample: {
 #
 #rtsp-test: {
 	#type = "rtsp"
-	#id = 99
+	#id = "99"
 	#description = "RTSP Test"
 	#audio = false
 	#video = true
