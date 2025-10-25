@@ -3430,7 +3430,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				if(stream->codecs.fmtp)
 					json_object_set_new(info, "fmtp", json_string(stream->codecs.fmtp));
 				if(stream->simulcast) {
-					json_object_set_new(info, "videosimulcast", json_true());
+					json_object_set_new(info, "simulcast", json_true());
 				}
 				if(stream->svc) {
 					json_object_set_new(info, "videosvc", json_true());
@@ -4488,7 +4488,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 							janus_config_add(config, m, janus_config_item_create("skew", "true"));
 					}
 					if(stream->simulcast) {
-						janus_config_add(config, m, janus_config_item_create("videosimulcast", "true"));
+						janus_config_add(config, m, janus_config_item_create("simulcast", "true"));
 						if(stream->port[1]) {
 							g_snprintf(value, BUFSIZ, "%d", stream->port[1]);
 							janus_config_add(config, m, janus_config_item_create("port2", value));
@@ -4846,7 +4846,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 							janus_config_add(config, m, janus_config_item_create("skew", "true"));
 					}
 					if(stream->simulcast) {
-						janus_config_add(config, m, janus_config_item_create("videosimulcast", "true"));
+						janus_config_add(config, m, janus_config_item_create("simulcast", "true"));
 						if(stream->port[1]) {
 							g_snprintf(value, BUFSIZ, "%d", stream->port[1]);
 							janus_config_add(config, m, janus_config_item_create("port2", value));
