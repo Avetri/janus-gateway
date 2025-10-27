@@ -7796,7 +7796,6 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	}
 	if(!media || g_list_length(media) == 0) {
 		JANUS_LOG(LOG_ERR, "Can't add 'rtp' mountpoint, no audio, video or data have to be streamed...\n");
-		janus_mutex_unlock(&mountpoints_mutex);
 		return NULL;
 	}
 	/* Create the mountpoint */
