@@ -75,6 +75,7 @@ type = rtp|live|ondemand|rtsp
        rtsp = stream originated by an external RTSP feed (only
               available if libcurl support was compiled)
 id = <unique string ID>
+aliases = An optional array of unique string IDs for stream
 description = This is my awesome stream
 metadata = An optional string that can contain any metadata (e.g., JSON)
 			associated with the stream you want users to receive
@@ -327,6 +328,7 @@ multistream-test: {
 	"list" : [
 		{
 			"id" : <unique ID of mountpoint #1>,
+			"aliases" : "<ID aliases of mountpoint #1, if any>",
 			"type" : "<type of mountpoint #1, in line with the types introduced above>",
 			"description" : "<description of mountpoint #1>",
 			"video_mediainfo" : "<video mediainfo of mountpoint #1, if any>",
@@ -347,6 +349,7 @@ multistream-test: {
 		},
 		{
 			"id" : <unique ID of mountpoint #2>,
+			"aliases" : "<ID aliases of mountpoint #2, if any>",
 			"type" : "<type of mountpoint #2, in line with the types introduced above>",
 			"description" : "<description of mountpoint #2>",
 			"video_mediainfo" : "<video mediainfo of mountpoint #2, if any>",
@@ -380,6 +383,7 @@ multistream-test: {
 	"streaming" : "info",
 	"info" : {
 		"id" : <unique ID of mountpoint>,
+		"aliases" : "<ID aliases of mountpoint, if any>",
 		"name" : "<unique name of mountpoint>",
 		"description" : "<description of mountpoint>",
 		"metadata" : "<metadata of mountpoint, if any>",
@@ -433,6 +437,7 @@ multistream-test: {
 	"admin_key" : "<plugin administrator key; mandatory if configured>",
 	"type" : "<type of the mountpoint to create; mandatory>",
 	"id" : <unique ID to assign the mountpoint; optional, will be chosen by the server if missing>,
+	"aliases" : "<unique ID aliases to assign the mountpoint>",
 	"name" : "<unique name for the mountpoint; optional, will be chosen by the server if missing>",
 	"description" : "<description of mountpoint; optional>",
 	"metadata" : "<metadata of mountpoint; optional>",
@@ -532,6 +537,7 @@ multistream-test: {
 {
 	"request" : "edit",
 	"id" : <unique ID of the mountpoint to edit; mandatory>,
+	"new_aliases" : <unique ID aliases of the mountpoint; optional>,
 	"secret" : "<secret to edit the mountpoint; mandatory if configured>",
 	"new_description" : "<new description for the mountpoint; optional>",
 	"new_metadata" : "<new metadata for the mountpoint; optional>",
@@ -1079,6 +1085,7 @@ static struct janus_json_parameter adminkey_parameters[] = {
 };
 static struct janus_json_parameter edit_parameters[] = {
 	{"new_description", JSON_STRING, 0},
+	{"new_aliases", JSON_ARRAY, 0},
 	{"new_metadata", JSON_STRING, 0},
 	{"new_secret", JSON_STRING, 0},
 	{"new_pin", JSON_STRING, 0},
@@ -1089,6 +1096,7 @@ static struct janus_json_parameter edit_parameters[] = {
 static struct janus_json_parameter create_parameters[] = {
 	{"name", JSON_STRING, 0},
 	{"description", JSON_STRING, 0},
+	{"aliases", JSON_ARRAY, 0},
 	{"metadata", JSON_STRING, 0},
 	{"is_private", JANUS_JSON_BOOL, 0},
 	{"type", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
@@ -1359,6 +1367,17 @@ static void janus_streaming_rtp_relay_packet_free(janus_streaming_rtp_relay_pack
 
 }
 
+static void g_hash_table_remove_list(GHashTable *hash_table, GList *key_list) {
+	if (NULL != key_list && NULL != hash_table) {
+		for (guint idx=0; idx<g_list_length(key_list); idx++) {
+			gpointer key = g_list_nth_data(key_list, idx);
+			if (NULL != key) {
+				g_hash_table_remove(hash_table, key);
+			}
+		}
+	}
+}
+
 #ifdef HAVE_LIBCURL
 typedef struct janus_streaming_buffer {
 	char *buffer;
@@ -1508,6 +1527,7 @@ typedef struct multiple_fds {
 typedef struct janus_streaming_mountpoint {
 	gchar *id_str;		/* Unique mountpoint ID (when using strings) */
 	uint32_t id_num;
+	GList *aliases;     /* Mountpoint string ID aliases array */
 	char *name;
 	char *description;
 	char *metadata;
@@ -1530,6 +1550,7 @@ typedef struct janus_streaming_mountpoint {
 	janus_refcount ref;
 } janus_streaming_mountpoint;
 GHashTable *mountpoints = NULL, *mountpoints_temp = NULL;
+GHashTable *aliases = NULL;
 janus_mutex mountpoints_mutex = JANUS_MUTEX_INITIALIZER;
 static char *admin_key = NULL;
 
@@ -1569,17 +1590,17 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 		gboolean doskew, uint16_t bufferkf_ms, uint32_t bufferkf_bytes, gboolean simulcast, gboolean svc,
 		gboolean textdata, gboolean buffermsg);
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
-		char *id_str, char *name, char *desc, char *metadata,
+		char *id_str, char *name, char *desc, GList *its_aliases, char *metadata,
 		GList *media, int srtpsuite, char *srtpcrypto, int threads, int rtp_collision,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
 		gboolean e2ee, gboolean playoutdelay_ext, int abscapturetime_src_ext_id);
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
-		char *id_str, char *name, char *desc, char *metadata, char *filename, gboolean live,
+		char *id_str, char *name, char *desc, GList *its_aliases, char *metadata, char *filename, gboolean live,
 		gboolean doaudio, uint8_t apt, char *acodec, char *afmtp, gboolean dovideo);
 /* Helper to create a rtsp live source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		char *id_str, char *name, char *desc, char *metadata,
+		char *id_str, char *name, char *desc, GList *its_aliases, char *metadata,
 		char *url, char *username, char *password,
 		gboolean quirk, gboolean notify_changes,
 		gboolean doaudio, int audiopt, char *acodec, char *afmtp,
@@ -1660,6 +1681,10 @@ static void janus_streaming_session_free(const janus_refcount *session_ref) {
 	g_free(session);
 }
 
+static gpointer	g_list_strdup(gconstpointer src, gpointer data) {
+	return (gpointer)g_strdup((const gchar *)src);
+}
+
 static void janus_streaming_mountpoint_destroy(janus_streaming_mountpoint *mountpoint) {
 	if(!mountpoint)
 		return;
@@ -1697,6 +1722,7 @@ static void janus_streaming_mountpoint_free(const janus_refcount *mp_ref) {
 	janus_streaming_mountpoint *mp = janus_refcount_containerof(mp_ref, janus_streaming_mountpoint, ref);
 	/* This mountpoint can be destroyed, free all the resources */
 	g_free(mp->id_str);
+	g_list_free_full(mp->aliases, g_free);
 	g_free(mp->name);
 	g_free(mp->description);
 	g_free(mp->metadata);
@@ -2142,6 +2168,8 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 		(GDestroyNotify)g_free, (GDestroyNotify)janus_streaming_mountpoint_destroy);
 	mountpoints_temp = g_hash_table_new_full(g_str_hash, g_str_equal,
 		(GDestroyNotify)g_free, NULL);
+	aliases = g_hash_table_new_full(g_str_hash, g_str_equal,
+		(GDestroyNotify)g_free, (GDestroyNotify)g_free);
 	if(config != NULL) {
 		GList *clist = janus_config_get_categories(config, NULL), *cl = clist;
 		while(cl != NULL) {
@@ -2163,13 +2191,51 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 			} else {
 				janus_mutex_lock(&mountpoints_mutex);
 				/* Let's make sure the mountpoint doesn't exist already */
-				if(g_hash_table_lookup(mountpoints, (gpointer)id->value) != NULL) {
+				if(g_hash_table_lookup(mountpoints, (gpointer)id->value) != NULL || g_hash_table_lookup(aliases, (gpointer)id->value) != NULL) {
 					/* It does... */
 					janus_mutex_unlock(&mountpoints_mutex);
 					JANUS_LOG(LOG_ERR, "Can't add the Streaming mountpoint '%s', ID '%s' already exists...\n",
 						cat->name, id->value);
 					cl = cl->next;
 					continue;
+				}
+				janus_mutex_unlock(&mountpoints_mutex);
+			}
+			janus_mutex_lock(&mountpoints_mutex);
+			g_hash_table_insert(aliases, (gpointer)g_strdup(id->value), (gpointer)g_strdup(id->value));
+			janus_mutex_unlock(&mountpoints_mutex);
+			janus_config_array *alss = janus_config_get(config, cat, janus_config_type_array, "aliases");
+			GList *its_aliases = NULL;
+			if (NULL != alss) {
+				if (NULL!=alss->list && !strcasecmp(alss->name, "aliases") && janus_config_type_array==alss->type) {
+					for (guint idx=0; idx < g_list_length(alss->list); idx++) {
+						janus_config_item *item = g_list_nth_data(alss->list, idx);
+						if (NULL!=item->value && NULL==item->name && janus_config_type_item==item->type) {
+							its_aliases = g_list_append(its_aliases, g_strdup(item->value));
+						}
+					}
+				}
+				janus_mutex_lock(&mountpoints_mutex);
+				gchar *exists = NULL;
+				for (guint idx=0; idx<g_list_length(its_aliases); idx++) {
+					gchar * alias = g_list_nth_data(its_aliases, idx);
+					if(NULL != alias && g_hash_table_lookup(aliases, alias) != NULL) {
+						exists = alias;
+						break;
+					}
+				}
+				if(NULL != exists) {
+					janus_mutex_unlock(&mountpoints_mutex);
+					JANUS_LOG(LOG_ERR, "Can't add the Streaming mountpoint '%s', ID alias '%s', already exists...\n",
+						cat->name, exists);
+					g_list_free_full(its_aliases, g_free);
+					its_aliases = NULL;
+					cl = cl->next;
+					continue;
+				}
+				for (guint idx=0; idx<g_list_length(its_aliases); idx++) {
+					gchar * alias = g_list_nth_data(its_aliases, idx);
+					g_hash_table_insert(aliases, (gpointer)g_strdup(alias), (gpointer)g_strdup(id->value));
 				}
 				janus_mutex_unlock(&mountpoints_mutex);
 			}
@@ -2628,6 +2694,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)(id ? id->value : NULL),
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						its_aliases,
 						md ? (char *)md->value : NULL,
 						streams,
 						ssuite && ssuite->value ? atoi(ssuite->value) : 0,
@@ -2705,6 +2772,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)(id ? id->value : NULL),
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						its_aliases,
 						md ? (char *)md->value : NULL,
 						(char *)file->value, TRUE,
 						doaudio,
@@ -2779,6 +2847,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)(id ? id->value : NULL),
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						its_aliases,
 						md ? (char *)md->value : NULL,
 						(char *)file->value, FALSE,
 						doaudio,
@@ -2897,6 +2966,7 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						(char *)(id ? id->value : NULL),
 						(char *)cat->name,
 						desc ? (char *)desc->value : NULL,
+						its_aliases,
 						md ? (char *)md->value : NULL,
 						(char *)file->value,
 						username ? (char *)username->value : NULL,
@@ -2988,6 +3058,8 @@ void janus_streaming_destroy(void) {
 
 	/* Remove all mountpoints */
 	janus_mutex_lock(&mountpoints_mutex);
+	g_hash_table_destroy(aliases);
+	aliases = NULL;
 	g_hash_table_destroy(mountpoints);
 	mountpoints = NULL;
 	g_hash_table_destroy(mountpoints_temp);
@@ -3253,6 +3325,13 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			janus_refcount_increase(&mp->ref);
 			json_t *ml = json_object();
 			json_object_set_new(ml, "id", json_string(mp->id_str));
+			if(mp->aliases && 0 < g_list_length(mp->aliases)) {
+				json_t * arr = json_array();
+				for (guint idx = 0; idx < g_list_length(mp->aliases); idx++) {
+					json_array_append(arr, json_string(g_list_nth_data(mp->aliases, idx)));
+				}
+				json_object_set_new(ml, "aliases", arr);
+			}
 			json_object_set_new(ml, "type", json_string(mp->streaming_type == janus_streaming_type_live ? "live" : "on demand"));
 			json_object_set_new(ml, "description", json_string(mp->description));
 			if(mp->metadata) {
@@ -3304,16 +3383,24 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto prepare_response;
-		json_t *id = json_object_get(root, "id");
-		char *id_value_str = (char *)json_string_value(id);
+		json_t *alias = json_object_get(root, "id");
+		char *alias_value_str = (char *)json_string_value(alias);
 		janus_mutex_lock(&mountpoints_mutex);
+		char *id_value_str = (char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str);
+		if (NULL == id_value_str) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such alias '%s'\n", alias_value_str);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such alias '%s'", alias_value_str);
+			goto prepare_response;
+		}
 		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
 			(gpointer)id_value_str);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
-			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream '%s', alias '%s'\n", id_value_str, alias_value_str);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-			g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
+			g_snprintf(error_cause, 512, "No such mountpoint/stream '%s', alias '%s'", id_value_str, alias_value_str);
 			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
@@ -3328,6 +3415,13 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		}
 		json_t *ml = json_object();
 		json_object_set_new(ml, "id", json_string(mp->id_str));
+		if(mp->aliases && 0 < g_list_length(mp->aliases)) {
+			json_t * arr = json_array();
+			for (guint idx = 0; idx < g_list_length(mp->aliases); idx++) {
+				json_array_append(arr, json_string(g_list_nth_data(mp->aliases, idx)));
+			}
+			json_object_set_new(ml, "aliases", arr);
+		}
 		if(admin && mp->name)
 			json_object_set_new(ml, "name", json_string(mp->name));
 		if(mp->description)
@@ -3516,21 +3610,24 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			g_snprintf(error_cause, 512, "No configuration file, can't create permanent mountpoint");
 			goto prepare_response;
 		}
-		json_t *id = json_object_get(root, "id");
+		json_t *alias = json_object_get(root, "id");
+		char *alias_value_str = (char *)json_string_value(alias);
 		/* Check if an ID has been provided, or if we need to generate one ourselves */
 		janus_mutex_lock(&mountpoints_mutex);
-		char *mpid_str = (char *)json_string_value(id);
+		char *mpid_str = (alias_value_str)?(char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str):NULL;
 		if(mpid_str != NULL) {
 			/* Make sure the provided ID isn't already in use */
 			if(g_hash_table_lookup(mountpoints, (gpointer)mpid_str) != NULL ||
 					g_hash_table_lookup(mountpoints_temp, (gpointer)mpid_str) != NULL) {
 				janus_mutex_unlock(&mountpoints_mutex);
-				JANUS_LOG(LOG_ERR, "A stream with the provided ID already exists\n");
+				JANUS_LOG(LOG_ERR, "A stream with the ID '%s' (provided alias: '%s') already exists\n", mpid_str, alias_value_str);
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
-				g_snprintf(error_cause, 512, "A stream with the provided ID already exists");
+				g_snprintf(error_cause, 512, "A stream with the ID '%s' (provided alias: '%s') already exists", mpid_str, alias_value_str);
 				goto prepare_response;
 			}
-		} else if(mpid_str == NULL) {
+		} else if(NULL != alias_value_str) {
+			mpid_str = alias_value_str;
+		} else {
 			/* Generate a unique alphanumeric ID */
 			JANUS_LOG(LOG_VERB, "Missing alphanumeric id, will generate a random one...\n");
 			while(mpid_str == 0) {
@@ -3546,6 +3643,28 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		g_hash_table_insert(mountpoints_temp,
 			(gpointer)g_strdup(mpid_str),
 			GUINT_TO_POINTER(TRUE));
+		g_hash_table_insert(aliases, (gpointer)g_strdup(mpid_str), (gpointer)g_strdup(mpid_str));
+		json_t *its_aliases = json_object_get(root, "aliases");
+		GList * alss = NULL;
+		for (size_t idx=0; idx<json_array_size(its_aliases); idx++) {
+			alss = g_list_append(alss, (gpointer)json_string_value(json_array_get(its_aliases, idx)));
+		}
+		for (guint idx=0; idx<g_list_length(alss); idx++) {
+			gchar *alias = g_list_nth_data(alss, idx);
+			if (NULL != alias) {
+				if (NULL != g_hash_table_lookup(aliases, (gpointer)alias)) {
+					g_hash_table_remove(aliases, (gpointer)mpid_str);
+					g_hash_table_remove_list(aliases, alss);
+					janus_mutex_unlock(&mountpoints_mutex);
+					JANUS_LOG(LOG_ERR, "A stream with the provided alias '%s' already exists\n", alias);
+					error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
+					g_snprintf(error_cause, 512, "A stream with the provided alias '%s' already exists", alias);
+					goto prepare_response;
+				} else {
+					g_hash_table_insert(aliases, (gpointer)g_strdup(alias), (gpointer)g_strdup(mpid_str));
+				}
+			}
+		}
 		janus_mutex_unlock(&mountpoints_mutex);
 		janus_streaming_mountpoint *mp = NULL;
 		gboolean legacy = FALSE;
@@ -3557,6 +3676,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			if(error_code != 0) {
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -3579,6 +3700,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Invalid element (abscaptime_src_id must be an integer between 1 and 14)");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -3588,6 +3711,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'rtp' stream, invalid bufferkf_ms value...");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -3598,6 +3723,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'rtp' stream, invalid bufferkf_bytes value...");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -3608,6 +3735,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'rtp' stream, invalid SRTP suite...");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -3624,6 +3753,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					g_snprintf(error_cause, 512, "Can't add 'rtp' stream, no audio or video have to be streamed...");
 					janus_mutex_lock(&mountpoints_mutex);
 					g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+					g_hash_table_remove(aliases, (gpointer)mpid_str);
+					g_hash_table_remove_list(aliases, alss);
 					janus_mutex_unlock(&mountpoints_mutex);
 					goto prepare_response;
 				}
@@ -3636,6 +3767,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					if(error_code != 0) {
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -3654,6 +3787,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -3695,6 +3830,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 							g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 							janus_mutex_lock(&mountpoints_mutex);
 							g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+							g_hash_table_remove(aliases, (gpointer)mpid_str);
+							g_hash_table_remove_list(aliases, alss);
 							janus_mutex_unlock(&mountpoints_mutex);
 							goto prepare_response;
 						}
@@ -3743,6 +3880,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 								g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 								janus_mutex_lock(&mountpoints_mutex);
 								g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+								g_hash_table_remove(aliases, (gpointer)mpid_str);
+								g_hash_table_remove_list(aliases, alss);
 								janus_mutex_unlock(&mountpoints_mutex);
 								goto prepare_response;
 							}
@@ -3762,6 +3901,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -3786,6 +3927,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					g_snprintf(error_cause, 512, "Can't add 'rtp' stream, no audio or video have to be streamed...");
 					janus_mutex_lock(&mountpoints_mutex);
 					g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+					g_hash_table_remove(aliases, (gpointer)mpid_str);
+					g_hash_table_remove_list(aliases, alss);
 					janus_mutex_unlock(&mountpoints_mutex);
 					goto prepare_response;
 				}
@@ -3801,6 +3944,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -3832,6 +3977,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 							g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for audio" : "Unable to query network device information");
 							janus_mutex_lock(&mountpoints_mutex);
 							g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+							g_hash_table_remove(aliases, (gpointer)mpid_str);
+							g_hash_table_remove_list(aliases, alss);
 							janus_mutex_unlock(&mountpoints_mutex);
 							goto prepare_response;
 						}
@@ -3854,6 +4001,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -3873,6 +4022,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -3922,6 +4073,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 							g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for video" : "Unable to query network device information");
 							janus_mutex_lock(&mountpoints_mutex);
 							g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+							g_hash_table_remove(aliases, (gpointer)mpid_str);
+							g_hash_table_remove_list(aliases, alss);
 							janus_mutex_unlock(&mountpoints_mutex);
 							goto prepare_response;
 						}
@@ -3948,6 +4101,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -3965,6 +4120,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -3988,6 +4145,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 							g_snprintf(error_cause, 512, "Invalid element (datatype can only be text or binary)");
 							janus_mutex_lock(&mountpoints_mutex);
 							g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+							g_hash_table_remove(aliases, (gpointer)mpid_str);
+							g_hash_table_remove_list(aliases, alss);
 							janus_mutex_unlock(&mountpoints_mutex);
 							goto prepare_response;
 						}
@@ -4001,6 +4160,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 							g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for data" : "Unable to query network device information");
 							janus_mutex_lock(&mountpoints_mutex);
 							g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+							g_hash_table_remove(aliases, (gpointer)mpid_str);
+							g_hash_table_remove_list(aliases, alss);
 							janus_mutex_unlock(&mountpoints_mutex);
 							goto prepare_response;
 						}
@@ -4022,6 +4183,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_list_free_full(streams, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -4033,6 +4196,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					g_snprintf(error_cause, 512, "Can't add 'rtp' stream: no datachannels support...");
 					janus_mutex_lock(&mountpoints_mutex);
 					g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+					g_hash_table_remove(aliases, (gpointer)mpid_str);
+					g_hash_table_remove_list(aliases, alss);
 					janus_mutex_unlock(&mountpoints_mutex);
 					goto prepare_response;
 #endif
@@ -4043,6 +4208,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid_str,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					alss,
 					md ? (char *)json_string_value(md) : NULL,
 					streams,
 					ssuite ? json_integer_value(ssuite) : 0,
@@ -4071,6 +4237,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			if(error_code != 0) {
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4107,6 +4275,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'live' stream, we only support audio file streaming right now...");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4122,6 +4292,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'live' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4132,6 +4304,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'live' stream, no such file '%s'\n", filename);
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4140,6 +4314,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid_str,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					alss,
 					md ? (char *)json_string_value(md) : NULL,
 					filename, TRUE,
 					doaudio, apt, acodec, afmtp, dovideo);
@@ -4161,6 +4336,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			if(error_code != 0) {
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4197,6 +4374,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'ondemand' stream, we only support audio file streaming right now...");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4213,6 +4392,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'ondemand' stream, unsupported format (we only support raw mu-Law and a-Law files right now)");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4223,6 +4404,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'ondemand' stream, no such file '%s'\n", filename);
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4231,6 +4414,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid_str,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					alss,
 					md ? (char *)json_string_value(md) : NULL,
 					filename, FALSE,
 					doaudio, apt, acodec, afmtp, dovideo);
@@ -4257,6 +4441,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			if(error_code != 0) {
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4307,6 +4493,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'rtsp' stream, invalid bufferkf_ms value...");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4317,6 +4505,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'rtsp' stream, invalid bufferkf_bytes value...");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			}
@@ -4327,6 +4517,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "Can't add 'rtsp' stream, no audio or video have to be streamed...");
 				janus_mutex_lock(&mountpoints_mutex);
 				g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+				g_hash_table_remove(aliases, (gpointer)mpid_str);
+				g_hash_table_remove_list(aliases, alss);
 				janus_mutex_unlock(&mountpoints_mutex);
 				goto prepare_response;
 			} else {
@@ -4338,6 +4530,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 						g_snprintf(error_cause, 512, ifas ? "Invalid network interface configuration for stream" : "Unable to query network device information");
 						janus_mutex_lock(&mountpoints_mutex);
 						g_hash_table_remove(mountpoints_temp, (gpointer)mpid_str);
+						g_hash_table_remove(aliases, (gpointer)mpid_str);
+						g_hash_table_remove_list(aliases, alss);
 						janus_mutex_unlock(&mountpoints_mutex);
 						goto prepare_response;
 					}
@@ -4359,6 +4553,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid_str,
 					name ? (char *)json_string_value(name) : NULL,
 					desc ? (char *)json_string_value(desc) : NULL,
+					alss,
 					md ? (char *)json_string_value(md) : NULL,
 					(char *)json_string_value(url),
 					username ? (char *)json_string_value(username) : NULL,
@@ -4407,6 +4602,13 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			/* Now for the common values */
 			janus_config_add(config, c, janus_config_item_create("type", type_text));
 			janus_config_add(config, c, janus_config_item_create("id", mp->id_str));
+			if (mp->aliases && 0 < g_list_length(mp->aliases)) {
+				janus_config_array *gl = janus_config_array_create("aliases");
+				janus_config_add(config, c, gl);
+				for(guint idx=0; idx<g_list_length(mp->aliases); idx++) {
+					janus_config_add(config, gl, janus_config_item_create(NULL, (char *)g_list_nth_data(mp->aliases, idx)));
+				}
+			}
 			janus_config_add(config, c, janus_config_item_create("description", mp->description));
 			if(mp->metadata)
 				janus_config_add(config, c, janus_config_item_create("metadata", mp->metadata));
@@ -4675,7 +4877,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		if(error_code != 0)
 			goto prepare_response;
 		/* We only allow for a limited set of properties to be edited */
-		json_t *id = json_object_get(root, "id");
+		json_t *j_aliases = json_object_get(root, "new_aliases");
 		json_t *desc = json_object_get(root, "new_description");
 		json_t *md = json_object_get(root, "new_metadata");
 		json_t *secret = json_object_get(root, "new_secret");
@@ -4691,15 +4893,24 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			g_snprintf(error_cause, 512, "No configuration file, can't edit mountpoint permanently");
 			goto prepare_response;
 		}
-		char *id_value_str = (char *)json_string_value(id);
+		json_t *alias = json_object_get(root, "id");
+		char *alias_value_str = (char *)json_string_value(alias);
 		janus_mutex_lock(&mountpoints_mutex);
+		char *id_value_str = (char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str);
+		if (NULL == id_value_str) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such alias '%s'\n", alias_value_str);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such alias '%s'", alias_value_str);
+			goto prepare_response;
+		}
 		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
 			(gpointer)id_value_str);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
-			JANUS_LOG(LOG_ERR, "No such mountpoint (%s)\n", id_value_str);
+			JANUS_LOG(LOG_ERR, "No such mountpoint '%s', alias '%s'\n", id_value_str, alias_value_str);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-			g_snprintf(error_cause, 512, "No such mountpoint (%s)", id_value_str);
+			g_snprintf(error_cause, 512, "No such mountpoint '%s', alias '%s'", id_value_str, alias_value_str);
 			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
@@ -4714,6 +4925,39 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			goto prepare_response;
 		}
 		/* Edit the mountpoint properties that were provided */
+		if(aliases != NULL) {
+			GList *old_aliases = mp->aliases;
+			GList *new_aliases = NULL;
+			for (size_t idx=0; idx < json_array_size(j_aliases); idx++)
+			{
+				new_aliases = g_list_append(new_aliases, (gpointer)json_string_value(json_array_get(j_aliases, idx)));
+			}
+
+			// Check new aliases for absence
+			for (guint idx=0; idx<g_list_length(new_aliases); idx++) {
+				gchar *alias = g_list_nth_data(new_aliases, idx);
+				if (NULL != alias && NULL == g_list_find(old_aliases, alias) && NULL != g_hash_table_lookup(aliases, alias)) {
+					janus_mutex_unlock(&mp->mutex);
+					janus_mutex_unlock(&mountpoints_mutex);
+					janus_refcount_decrease(&mp->ref);
+					JANUS_LOG(LOG_ERR, "Alias '%s' already exists\n", alias);
+					error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+					g_snprintf(error_cause, 512, "Alias '%s' already exists", alias);
+					g_list_free_full(new_aliases, g_free);
+					goto prepare_response;
+				}
+			}
+
+			g_hash_table_remove_list(aliases, old_aliases);
+			for (guint idx=0; idx<g_list_length(new_aliases); idx++) {
+				gchar *alias = g_list_nth_data(new_aliases, idx);
+				if (NULL != alias) {
+					g_hash_table_insert(aliases, (gpointer)g_strdup(alias), (gpointer)g_strdup(id_value_str));
+				}
+			}
+			g_list_free_full(old_aliases, g_free);
+			mp->aliases = new_aliases;
+		}
 		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
 			char *old_description = mp->description;
 			char *new_description = g_strdup(json_string_value(desc));
@@ -4765,6 +5009,13 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			janus_config_category *c = janus_config_get_create(config, NULL, janus_config_type_category, mp->name);
 			/* Now for the common values */
 			janus_config_add(config, c, janus_config_item_create("id", mp->id_str));
+			if (mp->aliases && 0 < g_list_length(mp->aliases)) {
+				janus_config_array *gl = janus_config_array_create("aliases");
+				janus_config_add(config, c, gl);
+				for(guint idx=0; idx<g_list_length(mp->aliases); idx++) {
+					janus_config_add(config, gl, janus_config_item_create(NULL, (char *)g_list_nth_data(mp->aliases, idx)));
+				}
+			}
 			janus_config_add(config, c, janus_config_item_create("description", mp->description));
 			if(mp->metadata)
 				janus_config_add(config, c, janus_config_item_create("metadata", mp->metadata));
@@ -5069,8 +5320,18 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto prepare_response;
-		json_t *id = json_object_get(root, "id");
-		char *id_value_str = (char *)json_string_value(id);
+		json_t *alias = json_object_get(root, "id");
+		char *alias_value_str = (char *)json_string_value(alias);
+		janus_mutex_lock(&mountpoints_mutex);
+		char *id_value_str = (char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str);
+		if (NULL == id_value_str) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such alias '%s'\n", alias_value_str);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such alias '%s'", alias_value_str);
+			goto prepare_response;
+		}
+		janus_mutex_unlock(&mountpoints_mutex);
 		json_t *permanent = json_object_get(root, "permanent");
 		gboolean save = permanent ? json_is_true(permanent) : FALSE;
 		if(save && config == NULL) {
@@ -5084,9 +5345,9 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			(gpointer)id_value_str);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
-			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream '%s', alias '%s'\n", id_value_str, alias_value_str);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-			g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
+			g_snprintf(error_cause, 512, "No such mountpoint/stream '%s', alias '%s'", id_value_str, alias_value_str);
 			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
@@ -5098,12 +5359,14 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			janus_mutex_unlock(&mountpoints_mutex);
 			goto prepare_response;
 		}
-		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream %s\n", id_value_str);
+		JANUS_LOG(LOG_VERB, "Request to unmount mountpoint/stream '%s', alias '%s'\n", id_value_str, alias_value_str);
 		/* Remove mountpoint from the hashtable: this will get it destroyed eventually */
 		g_hash_table_remove(mountpoints,
 			(gpointer)id_value_str);
 		/* FIXME Should we kick the current viewers as well? */
 		janus_mutex_lock(&mp->mutex);
+		g_hash_table_remove(aliases, (gpointer)id_value_str);
+		g_hash_table_remove_list(aliases, mp->aliases);
 		GList *viewer = g_list_first(mp->viewers);
 		/* Prepare JSON event */
 		json_t *event = json_object();
@@ -5205,16 +5468,24 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto prepare_response;
-		json_t *id = json_object_get(root, "id");
-		char *id_value_str = (char *)json_string_value(id);
+		json_t *alias = json_object_get(root, "id");
+		char *alias_value_str = (char *)json_string_value(alias);
 		janus_mutex_lock(&mountpoints_mutex);
+		char *id_value_str = (char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str);
+		if (NULL == id_value_str) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such alias '%s'\n", alias_value_str);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such alias '%s'", alias_value_str);
+			goto prepare_response;
+		}
 		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
 			(gpointer)id_value_str);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
-			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream '%s', alias '%s'\n", id_value_str, alias_value_str);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-			g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
+			g_snprintf(error_cause, 512, "No such mountpoint/stream '%s', alias '%s'", id_value_str, alias_value_str);
 			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
@@ -5474,16 +5745,24 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				JANUS_STREAMING_ERROR_MISSING_ELEMENT, JANUS_STREAMING_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
 			goto prepare_response;
-		json_t *id = json_object_get(root, "id");
-		char *id_value_str = id_value_str = (char *)json_string_value(id);
+		json_t *alias = json_object_get(root, "id");
+		char *alias_value_str = (char *)json_string_value(alias);
 		janus_mutex_lock(&mountpoints_mutex);
+		char *id_value_str = (char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str);
+		if (NULL == id_value_str) {
+			janus_mutex_unlock(&mountpoints_mutex);
+			JANUS_LOG(LOG_VERB, "No such alias '%s'\n", alias_value_str);
+			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+			g_snprintf(error_cause, 512, "No such alias '%s'", alias_value_str);
+			goto prepare_response;
+		}
 		janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
 			(gpointer)id_value_str);
 		if(mp == NULL) {
 			janus_mutex_unlock(&mountpoints_mutex);
-			JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
+			JANUS_LOG(LOG_VERB, "No such mountpoint/stream '%s', alias '%s'\n", id_value_str, alias_value_str);
 			error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-			g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
+			g_snprintf(error_cause, 512, "No such mountpoint/stream '%s', alias '%s'", id_value_str, alias_value_str);
 			goto prepare_response;
 		}
 		janus_refcount_increase(&mp->ref);
@@ -6006,8 +6285,8 @@ static void *janus_streaming_handler(void *data) {
 				janus_mutex_unlock(&sessions_mutex);
 				goto error;
 			}
-			json_t *id = json_object_get(root, "id");
-			char *id_value_str = (char *)json_string_value(id);
+			json_t *alias = json_object_get(root, "id");
+			char *alias_value_str = (char *)json_string_value(alias);
 			/* The proper way is listing the mids of the streams we want to
 			 * receive: a missing or empty list will subscribe to them all */
 			json_t *mids = json_object_get(root, "media");
@@ -6033,14 +6312,22 @@ static void *janus_streaming_handler(void *data) {
 			do_restart = restart ? json_is_true(restart) : FALSE;
 			/* Find the mountpoint and go on */
 			janus_mutex_lock(&mountpoints_mutex);
+			char *id_value_str = (char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str);
+			if (NULL == id_value_str) {
+				janus_mutex_unlock(&mountpoints_mutex);
+				JANUS_LOG(LOG_VERB, "No such alias '%s'\n", alias_value_str);
+				error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+				g_snprintf(error_cause, 512, "No such alias '%s'", alias_value_str);
+				goto error;
+			}
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
 				(gpointer)id_value_str);
 			if(mp == NULL) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				janus_mutex_unlock(&sessions_mutex);
-				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
+				JANUS_LOG(LOG_VERB, "No such mountpoint/stream '%s', alias '%s'\n", id_value_str, alias_value_str);
 				error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-				g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
+				g_snprintf(error_cause, 512, "No such mountpoint/stream '%s', alias '%s'", id_value_str, alias_value_str);
 				goto error;
 			}
 			janus_refcount_increase(&mp->ref);
@@ -6140,7 +6427,7 @@ static void *janus_streaming_handler(void *data) {
 				}
 			}
 			/* New viewer: we send an offer ourselves */
-			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream %s\n", id_value_str);
+			JANUS_LOG(LOG_VERB, "Request to watch mountpoint/stream '%s', alias '%s'\n", id_value_str, alias_value_str);
 			if(g_list_find(mp->viewers, session) != NULL) {
 				janus_mutex_unlock(&session->mutex);
 				janus_mutex_unlock(&mp->mutex);
@@ -7100,18 +7387,26 @@ done:
 				janus_refcount_decrease(&oldmp->ref);
 				goto error;
 			}
-			json_t *id = json_object_get(root, "id");
-			char *id_value_str = (char *)json_string_value(id);
+			json_t *alias = json_object_get(root, "id");
+			char *alias_value_str = (char *)json_string_value(alias);
 			janus_mutex_lock(&mountpoints_mutex);
+			char *id_value_str = (char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str);
+			if (NULL == id_value_str) {
+				janus_mutex_unlock(&mountpoints_mutex);
+				JANUS_LOG(LOG_VERB, "No such alias '%s'\n", alias_value_str);
+				error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
+				g_snprintf(error_cause, 512, "No such alias '%s'", alias_value_str);
+				goto error;
+			}
 			janus_streaming_mountpoint *mp = g_hash_table_lookup(mountpoints,
 				(gpointer)id_value_str);
 			if(mp == NULL || g_atomic_int_get(&mp->destroyed)) {
 				janus_mutex_unlock(&mountpoints_mutex);
 				janus_mutex_unlock(&session->mutex);
 				janus_mutex_unlock(&sessions_mutex);
-				JANUS_LOG(LOG_VERB, "No such mountpoint/stream %s\n", id_value_str);
+				JANUS_LOG(LOG_VERB, "No such mountpoint/stream '%s', alias '%s'\n", id_value_str, alias_value_str);
 				error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
-				g_snprintf(error_cause, 512, "No such mountpoint/stream %s", id_value_str);
+				g_snprintf(error_cause, 512, "No such mountpoint/stream '%s', alias '%s'", id_value_str, alias_value_str);
 				goto error;
 			}
 			janus_refcount_increase(&mp->ref);
@@ -7779,7 +8074,7 @@ janus_streaming_rtp_source_stream *janus_streaming_create_rtp_source_stream(
 }
 
 janus_streaming_mountpoint *janus_streaming_create_rtp_source(
-		char *id_str, char *name, char *desc, char *metadata,
+		char *id_str, char *name, char *desc, GList *its_aliases, char *metadata,
 		GList *media, int srtpsuite, char *srtpcrypto, int threads, int rtp_collision,
 		uint16_t bufferkf_ms, uint32_t bufferkf_bytes,
 		gboolean e2ee, gboolean playoutdelay_ext, int abscapturetime_src_ext_id) {
@@ -7805,6 +8100,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 	janus_streaming_mountpoint *live_rtp = g_malloc0(sizeof(janus_streaming_mountpoint));
 	live_rtp->id_str = g_strdup(id_str);
 	live_rtp->id_num = g_str_hash(id_str);
+	live_rtp->aliases = ((its_aliases && 0 < g_list_length(its_aliases)) ? g_list_copy_deep(its_aliases, g_list_strdup, NULL) : NULL);
 	live_rtp->name = g_strdup(name ? name : tempname);
 	char *description = NULL;
 	if(desc != NULL)
@@ -7828,6 +8124,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			g_free(decoded);
 			g_list_free_full(media, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 			g_free(live_rtp_source);
+			g_hash_table_remove(aliases, (gpointer)id_str);
+			g_hash_table_remove_list(aliases, its_aliases);
 			g_free(live_rtp->name);
 			g_free(live_rtp->description);
 			g_free(live_rtp->metadata);
@@ -7853,6 +8151,8 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 			g_free(decoded);
 			g_list_free_full(media, (GDestroyNotify)(janus_streaming_rtp_source_stream_unref));
 			g_free(live_rtp_source);
+			g_hash_table_remove(aliases, (gpointer)id_str);
+			g_hash_table_remove_list(aliases, its_aliases);
 			g_free(live_rtp->name);
 			g_free(live_rtp->description);
 			g_free(live_rtp->metadata);
@@ -7965,7 +8265,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtp_source(
 
 /* Helper to create a file/ondemand live source */
 janus_streaming_mountpoint *janus_streaming_create_file_source(
-		char *id_str, char *name, char *desc, char *metadata, char *filename, gboolean live,
+		char *id_str, char *name, char *desc, GList *its_aliases, char *metadata, char *filename, gboolean live,
 		gboolean doaudio, uint8_t apt, char *acodec, char *afmtp, gboolean dovideo) {
 	if(filename == NULL) {
 		JANUS_LOG(LOG_ERR, "Can't add 'live' stream, missing filename...\n");
@@ -8003,6 +8303,7 @@ janus_streaming_mountpoint *janus_streaming_create_file_source(
 	janus_streaming_mountpoint *file_source = g_malloc0(sizeof(janus_streaming_mountpoint));
 	file_source->id_str = g_strdup(id_str);
 	file_source->id_num = g_str_hash(id_str);
+	file_source->aliases = (its_aliases ? g_list_copy_deep(its_aliases, g_list_strdup, NULL) : NULL);
 	char tempname[255];
 	if(!name) {
 		memset(tempname, 0, 255);
@@ -8924,7 +9225,7 @@ static int janus_streaming_rtsp_play(janus_streaming_rtp_source *source) {
 
 /* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		char *id_str, char *name, char *desc, char *metadata,
+		char *id_str, char *name, char *desc, GList *its_aliases, char *metadata,
 		char *url, char *username, char *password,
 		gboolean quirk, gboolean notify_changes,
 		gboolean doaudio, int apt, char *acodec, char *afmtp,
@@ -8983,6 +9284,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 	janus_streaming_mountpoint *live_rtsp = g_malloc0(sizeof(janus_streaming_mountpoint));
 	live_rtsp->id_str = g_strdup(id_str);
 	live_rtsp->id_num = g_str_hash(id_str);
+	live_rtsp->aliases = (its_aliases ? g_list_copy_deep(its_aliases, g_list_strdup, NULL) : NULL);
 	live_rtsp->name = sourcename;
 	live_rtsp->description = description;
 	live_rtsp->metadata = (metadata ? g_strdup(metadata) : NULL);
@@ -9105,7 +9407,7 @@ janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
 #else
 /* Helper to create an RTSP source */
 janus_streaming_mountpoint *janus_streaming_create_rtsp_source(
-		uint64_t id, char *id_str, char *name, char *desc, char *metadata,
+		uint64_t id, char *id_str, char *name, char *desc, GList *aliases, char *metadata,
 		char *url, char *username, char *password,
 		gboolean quirk, gboolean notify_changes,
 		gboolean doaudio, int apt, char *audiocodec, char *audiofmtp,
