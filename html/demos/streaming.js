@@ -275,7 +275,9 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#videos').empty();
-									$('#info').addClass('hide');
+									$('#aiases_card').addClass('hide');
+									$('#mediainfo_card').addClass('hide');
+									$('#metadata_card').addClass('hide');
 									for(let i in bitrateTimer)
 										clearInterval(bitrateTimer[i]);
 									bitrateTimer = {};
@@ -358,6 +360,7 @@ function updateStreamsList() {
 			$('#streamslist a').off('click').on('click', function() {
 				selectedStream = $(this).attr("id");
 				$('#streamset').html($(this).html());
+				getStreamInfo();
 			});
 			$('#watch').removeAttr('disabled').unbind('click').click(startStream);
 		}
@@ -365,16 +368,42 @@ function updateStreamsList() {
 }
 
 function getStreamInfo() {
+	$('#id').empty();
+	$('#mediainfo').empty();
 	$('#metadata').empty();
-	$('#info').addClass('hide');
+	$('#id_card').addClass('hide');
+	$('#mediainfo_card').addClass('hide');
+	$('#metadata_card').addClass('hide');
 	if(!selectedStream || !streamsList[selectedStream])
 		return;
 	// Send a request for more info on the mountpoint we subscribed to
-	let body = { request: "info", id: parseInt(selectedStream) || selectedStream };
+	let body = { request: "info", id: selectedStream };
 	streaming.send({ message: body, success: function(result) {
-		if(result && result.info && result.info.metadata) {
-			$('#metadata').html(escapeXmlTags(result.info.metadata));
-			$('#info').removeClass('hide');
+		if(result && result.info) {
+			let:txt = "";
+			if (result.info.id) {
+				txt += "ID: " + result.info.id;
+				txt += ", ";
+			}
+			txt += "ID aliases: [";
+			for (idx=0; idx<(result.info.aliases?result.info.aliases.length:-1); idx++) {
+				l = result.info.aliases[idx];
+				txt += "\"" + l + "\"";
+				if (idx < result.info.aliases.length-1) {
+					txt += ", ";
+				}
+			}
+			txt += "]";
+			$('#id').html(txt);
+			$('#id_card').removeClass('hide');
+			if (result.info.metadata) {
+				$('#metadata').html(escapeXmlTags(result.info.metadata));
+				$('#metadata_card').removeClass('hide');
+			}
+			if (result.info.video_mediainfo) {
+				$('#mediainfo').html(escapeXmlTags(result.info.video_mediainfo));
+				$('#mediainfo_card').removeClass('hide');
+			}
 		}
 	}});
 }
