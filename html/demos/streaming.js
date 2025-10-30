@@ -452,7 +452,7 @@ function startStream() {
 		}
 	}
 	// Prepare the request to start streaming and send it
-	let body = { request: "watch", id: parseInt(selectedStream) || selectedStream };
+	let body = { request: "watch", id: selectedStream };
 	// Notice that, for RTP mountpoints, you can subscribe to a subset
 	// of the mountpoint media, rather than them all, by adding a "stream"
 	// array containing the list of stream mids you're interested in, e.g.:
