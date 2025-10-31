@@ -275,7 +275,7 @@ $(document).ready(function() {
 								oncleanup: function() {
 									Janus.log(" ::: Got a cleanup notification :::");
 									$('#videos').empty();
-									$('#aiases_card').addClass('hide');
+									$('#id_card').addClass('hide');
 									$('#mediainfo_card').addClass('hide');
 									$('#metadata_card').addClass('hide');
 									for(let i in bitrateTimer)
