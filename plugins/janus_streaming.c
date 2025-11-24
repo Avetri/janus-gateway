@@ -1960,10 +1960,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 						continue;
 					}
 				}
-				if (NULL != vports) {
-					janus_config_container_destroy(vports);
-					vports = NULL;
-				}
 				if(dovideo && vrtcpport != NULL && vrtcpport->value != NULL &&
 						(janus_string_to_uint16(vrtcpport->value, &video_rtcp_port) < 0)) {
 					JANUS_LOG(LOG_ERR, "Can't add 'rtp' mountpoint '%s', invalid video RTCP port...\n", cat->name);
@@ -2034,7 +2030,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 							}
 						}
 					}
-					janus_config_container_destroy(lbls);
 					lbls = NULL;
 				}
 				JANUS_LOG(LOG_VERB, "Audio %s, Video %s, Data %s\n",
@@ -2147,7 +2142,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 							}
 						}
 					}
-					janus_config_container_destroy(lbls);
 					lbls = NULL;
 				}
 
@@ -2231,7 +2225,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 							}
 						}
 					}
-					janus_config_container_destroy(lbls);
 					lbls = NULL;
 				}
 
@@ -2333,7 +2326,6 @@ int janus_streaming_init(janus_callbacks *callback, const char *config_path) {
 							}
 						}
 					}
-					janus_config_container_destroy(lbls);
 					lbls = NULL;
 				}
 
