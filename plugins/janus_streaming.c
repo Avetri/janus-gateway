@@ -2974,7 +2974,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 		char *alias_value_str = (char *)json_string_value(alias);
 		/* Check if an ID has been provided, or if we need to generate one ourselves */
 		janus_mutex_lock(&mountpoints_mutex);
-		char *mpid_str = (char *)g_hash_table_lookup(aliases, (gpointer)alias_value_str);
+		char *mpid_str = (char *)((alias_value_str)?g_hash_table_lookup(aliases, (gpointer)alias_value_str):NULL);
 		if(mpid_str != NULL) {
 			/* Make sure the provided ID isn't already in use */
 			if(g_hash_table_lookup(mountpoints, (gpointer)mpid_str) != NULL ||
@@ -2985,7 +2985,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				g_snprintf(error_cause, 512, "A stream with the provided ID '%s' (alias: '%s') already exists", mpid_str, alias_value_str);
 				goto prepare_response;
 			}
-		} else if(mpid_str == NULL) {
+		} else if(alias_value_str == NULL) {
 			/* Generate a unique alphanumeric ID */
 			JANUS_LOG(LOG_VERB, "Missing alphanumeric id, will generate a random one...\n");
 			while(mpid_str == 0) {
@@ -2997,6 +2997,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					mpid_str = NULL;
 				}
 			}
+		} else {
+			mpid_str = alias_value_str;
 		}
 		g_hash_table_insert(mountpoints_temp,
 			(gpointer)g_strdup(mpid_str),
@@ -3017,6 +3019,8 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				error_code = JANUS_STREAMING_ERROR_CANT_CREATE;
 				g_snprintf(error_cause, 512, "A stream with the provided alias '%s' already exists", alias);
 				goto prepare_response;
+			} else if (NULL != alias) {
+				g_hash_table_insert(aliases, (gpointer)g_strdup(alias), (gpointer)g_strdup(mpid_str));
 			}
 		}
 		janus_mutex_unlock(&mountpoints_mutex);
