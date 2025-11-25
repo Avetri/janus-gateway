@@ -3915,8 +3915,11 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			GList *new_aliases = NULL;
 			for (size_t idx=0; idx < json_array_size(j_aliases); idx++)
 			{
-				new_aliases = g_list_append(new_aliases, (gpointer)json_string_value(json_array_get(j_aliases, idx)));
+				new_aliases = g_list_append(new_aliases, (gpointer)g_strdup(json_string_value(json_array_get(j_aliases, idx))));
 			}
+
+			id_value_str = g_strdup(id_value_str);
+			g_hash_table_remove_list(aliases, old_aliases);
 
 			// Check new aliases for absence
 			for (guint idx=0; idx<g_list_length(new_aliases); idx++) {
@@ -3929,11 +3932,17 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 					error_code = JANUS_STREAMING_ERROR_NO_SUCH_MOUNTPOINT;
 					g_snprintf(error_cause, 512, "Alias '%s' already exists", alias);
 					g_list_free_full(new_aliases, g_free);
+					for (guint idx=0; idx<g_list_length(old_aliases); idx++) {
+						gchar *alias = g_list_nth_data(old_aliases, idx);
+						if (NULL != alias) {
+							g_hash_table_insert(aliases, (gpointer)g_strdup(alias), (gpointer)g_strdup(id_value_str));
+						}
+					}
+					g_free(id_value_str);
 					goto prepare_response;
 				}
 			}
 
-			g_hash_table_remove_list(aliases, old_aliases);
 			for (guint idx=0; idx<g_list_length(new_aliases); idx++) {
 				gchar *alias = g_list_nth_data(new_aliases, idx);
 				if (NULL != alias) {
@@ -3941,6 +3950,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 				}
 			}
 			g_list_free_full(old_aliases, g_free);
+			g_free(id_value_str);
 			mp->aliases = new_aliases;
 		}
 		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
@@ -3954,7 +3964,7 @@ static json_t *janus_streaming_process_synchronous_request(janus_streaming_sessi
 			GList *new_labels = NULL;
 			for (size_t idx=0; idx < json_array_size(labels); idx++)
 			{
-				new_labels = g_list_append(new_labels, (gpointer)json_string_value(json_array_get(labels, idx)));
+				new_labels = g_list_append(new_labels, (gpointer)g_strdup(json_string_value(json_array_get(labels, idx))));
 			}
 			mp->labels = new_labels;
 			g_list_free_full(old_labels, g_free);
