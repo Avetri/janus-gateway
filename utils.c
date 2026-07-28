@@ -1336,6 +1336,7 @@ gboolean janus_h265_is_keyframe(const char *buffer, int len) {
 	memcpy(&unit, buffer, sizeof(uint16_t));
 	unit = ntohs(unit);
 	uint8_t type = (unit & 0x7E00) >> 9;
+	JANUS_LOG(LOG_WARN, "%s:%d %s(): H265 NAL type is %hhu\n", __FILE__, __LINE__, __FUNCTION__, type);
 	if(type == 32 || type == 33 || type == 34 || type == 16 || type == 17 || type == 18 || type == 19 || type == 20 || type == 21) {
 		JANUS_LOG(LOG_WARN, "Got an H265 key frame\n");
 		/* FIXME We return TRUE for more than just VPS and SPS, as
